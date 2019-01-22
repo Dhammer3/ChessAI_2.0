@@ -100,6 +100,7 @@ class pawn(piece):
             movingBackwards=True
         elif(self.player=="White") and self.getY()<moveY :
             movingBackwards=True
+            return False
 
             # print("verticalMovement")
         if moveX > 7 or moveX < 0 or moveX > 7 or moveY < 0:
