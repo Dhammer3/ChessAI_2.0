@@ -1,18 +1,20 @@
 import array
-import itertools
-import time
+
 import random
 import sys
+import pandas as pd
 
-import queue
-import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # for training on gpu
-import numpy
-from array import *
+from llist import dllist, dllistnode
+import openpyxl
+import csv
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # for training on gpu
+
+
 from colorama import Fore, Back, Style
 import copy
 
+realPlayer = False
 # used for the test cases
 onlyLegalMoves = True
 
@@ -26,26 +28,6 @@ class neuralNetwork():
     def __init__(self, x, y):
         self.input = x
         self.weights1 = np.random.rand(self.input.shape[1], 4)
-
-
-class moveInfo():
-    def __init__(self, i, j, y, x):
-        self.xLoc = j
-        self.yLoc = i
-        self.moveX = x
-        self.movey = y
-
-    def xLoc(self):
-        return self.xLoc()
-
-    def yLoc(self):
-        return self.yLoc()
-
-    def moveX(self):
-        return self.moveX()
-
-    def moveY(self):
-        return self.moveY()
 
 
 class piece(object):
@@ -109,22 +91,22 @@ class piece(object):
             return True
 
 
-
-def putOwnKingInCheck( board, xPos, yPos, moveX, moveY):
-
+def putOwnKingInCheck(board, xPos, yPos, moveX, moveY):
     try:
         temp = copy.deepcopy(board)
         player = board[yPos][xPos].getPlayer()
         temp[moveY][moveX] = temp[yPos][xPos]
         temp[yPos][xPos] = " "
-        chkInfo=inCheck(temp, player)
+        chkInfo = inCheck(temp, player)
 
-        if (chkInfo[0]==1):
+        if (chkInfo[0] == 1):
             return True
         else:
             return False
     except(AttributeError):
         return True
+
+
 class pawn(piece):
     def __init__(self, player):
         self.player = player
@@ -150,6 +132,7 @@ class pawn(piece):
         twoSpaceMove = False
         notValidMove = False
         movingBackwards = False
+
         if (self.getX() != moveX):
             horizontalMovement = True
             # print("horizontalMovement")
@@ -160,6 +143,8 @@ class pawn(piece):
             return False
         elif (self.player == "White") and self.getY() < moveY:
             movingBackwards = True
+            return False
+        if (not horizontalMovement and not verticalMovement):
             return False
 
             # print("verticalMovement")
@@ -182,6 +167,8 @@ class pawn(piece):
             if (board[moveY][moveX].getPlayer() == self.getPlayer()):
                 attackingFriendlyPiece = True
                 # print("attackingFriendlyPiece")
+            if (board[moveY][moveX].getType() == "K"):
+                return False
             else:
                 attackingFriendlyPiece = False
                 attackingEnemyPiece = True
@@ -478,7 +465,7 @@ class knight(piece):
                 # and attackingFriendlyPiece
         ):
             return not putOwnKingInCheck(board, self.getX(), self.getY(), moveX, moveY)
-            #return True
+            # return True
         else:
             return False
 
@@ -833,6 +820,8 @@ class king(piece):
             return False
 
         if (board[moveY][moveX] != " "):
+            if (board[moveY][moveX].getType() == "K"):
+                return False
             # if player is trying to capture his own piece
             if (board[moveY][moveX].getPlayer() == self.getPlayer()) and board[moveY][moveX].getType() != "r":
                 bool = False
@@ -841,8 +830,9 @@ class king(piece):
                 castling = True
         if (moveGreaterThanOne and not castling):
             return False
-        if( putOwnKingInCheck( board, self.getX(), self.getY(), moveX, moveY)):
+        if (putOwnKingInCheck(board, self.getX(), self.getY(), moveX, moveY)):
             return False
+
         '''
         # will the king be put into check after it makes the move?
         for i in range(8):
@@ -865,7 +855,7 @@ class king(piece):
                        (3)There are pieces standing between your king and rook.
                        (4)The king is in check.
                        (5)The king moves through a square that is attacked by a piece of the opponent.
-                    
+
                        https://www.chessvariants.com/d.chess/castlefaq.html
                        '''
         if (castling and bool == True):
@@ -874,7 +864,7 @@ class king(piece):
                 return False
             # (4)
             test = inCheck(board, self.getPlayer());
-            #printBoard(board)
+            # printBoard(board)
             if (test[0] == 1):
                 return False
             # (5)
@@ -883,8 +873,8 @@ class king(piece):
                 # (3)(5)✓
                 if (board[moveY][moveX - 1] != " "
                         or board[moveY][moveX - 2] != " "
-                        or canEnemyMove(board, self.getPlayer(), self.getX() + 1, moveY)
-                        or canEnemyMove(board, self.getPlayer(), self.getX() + 2, moveY)
+                        or canEnemyMove(board, self.getPlayer(), moveX - 1, moveY)
+                        or canEnemyMove(board, self.getPlayer(), moveX - 2, moveY)
 
                 ):
 
@@ -903,6 +893,7 @@ class king(piece):
                     return False
                 else:
                     return True
+
         return bool
 
 
@@ -1053,6 +1044,7 @@ def newGame():  #
                 b[i][j].setY(i)
     return b
 
+
 '''
 def mover():
     whiteTurn = True
@@ -1065,6 +1057,7 @@ def mover():
             for j in range(8):
                 if board[i][j].toStr(0 == "White"):
 '''
+
 
 def testGame():
     # initialize the pieces
@@ -1132,7 +1125,8 @@ def setPositions(b):
                 b[i][j].setX(j)
                 b[i][j].setY(i)
 
-#the castling test cases are not working. when tried in main, everything was as expected.
+
+# the castling test cases are not working. when tried in main, everything was as expected.
 def testCases():
     # todo castling DONE ✓
     # todo upgrade a pawn DONE ✓
@@ -1248,8 +1242,8 @@ def testCases():
         print("FAILED TEST CASE 3.1 ATTEMPT A NON VALID CASTLE KING WITH ROOK. KING IS IN CHECK ")
     if kw0.move(b, rw0.getX(), rw0.getY()):
         print("FAILED TEST CASE 3.2 ATTEMPT A NON VALID CASTLE KING WITH ROOK. PIECE IN THE WAY!")
-    #if kb0.move(b, rb0.getX(), rb0.getY()):
-       # print("FAILED TEST CASE 3.3 ATTEMPT A NON VALID CASTLE KING WITH ROOK. PIECE IN THE WAY!")
+    # if kb0.move(b, rb0.getX(), rb0.getY()):
+    # print("FAILED TEST CASE 3.3 ATTEMPT A NON VALID CASTLE KING WITH ROOK. PIECE IN THE WAY!")
     if kb0.move(b, rb1.getX(), rb1.getY()):
         print("FAILED TEST CASE 3.4 ATTEMPT A NON VALID CASTLE KING WITH ROOK. PIECE IN THE WAY!")
     # CASE 4: A ENEMY PIECE CAN MOVE TO A SQUARE THAT THE KING IS MOVING THROUGH
@@ -1422,13 +1416,18 @@ def castleMove(board, xPos, yPos, moveX, moveY):
 
 def pawnPromotion(board, xPos, yPos):
     p = ""
+
     while (p != "q" or p != "r" or p != "b" or p != "r" or p != "k"):
+
         print("Select a type of piece to promote your pawn to:")
         print("q for Queen")
         print("r for Rook")
         print("b for Bishop")
         print("k for Knight")
-        p = input()
+        if not realPlayer:
+            p = "q"
+        else:
+            p = input()
 
         if (p == "q"):
             q1: queen = queen(board[yPos][xPos].getPlayer())
@@ -1516,12 +1515,14 @@ def makeMove(board, xPos, yPos, moveX, moveY):
                     and board[moveY][moveX].getPlayer() == "White"
                     and moveY == 0
             ):
+                print("white pawn promotion")
                 return pawnPromotion(board, moveX, moveY)
 
             if (board[moveY][moveX].getType() == "p"
                     and board[moveY][moveX].getPlayer() == "Black"
                     and moveY == 7
             ):
+                print("black pawn promotion")
                 return pawnPromotion(board, moveX, moveY)
             return board
 
@@ -1550,7 +1551,7 @@ def findKingPos(board):
 
 def inCheck(board, player):
     coordinates = findKingPos(board)
-    bkingY = coordinates[0]
+    bKingY = coordinates[0]
     bKingX = coordinates[1]
     wkingY = coordinates[2]
     wkingX = coordinates[3]
@@ -1563,9 +1564,8 @@ def inCheck(board, player):
         temp[wkingY][wkingX] = " "
         kingX = wkingX
         kingY = wkingY
-    else:
-        bKingY = coordinates[0]
-        bKingX = coordinates[1]
+    elif (player == "Black"):
+        # print("We are seeing if black is in CHECK---------------------------------------------------------------------------------------------")
         temp[bKingY][bKingX] = " "
         kingX = bKingX
         kingY = bKingY
@@ -1598,6 +1598,7 @@ def checkMate(board, player, coordinates):
     kingX, kingY = 0, 0
     kingCoords = findKingPos(board)
     if (player == "Black"):
+
         kingY = kingCoords[0]
         kingX = kingCoords[1]
     else:
@@ -1670,18 +1671,97 @@ def canEnemyMove(board, player, x, y):
     return False
 
 
+class moveInfo():
+    def __init__(self):
+        self.xPos = None
+        self.yPos = None
+        self.moveX = None
+        self.moveY = None
+        self.next = None
+
+    def getX(self):
+        return self.xLoc()
+
+    def getY(self):
+        return self.yLoc()
+
+    def moveX(self):
+        return self.moveX()
+
+    def moveY(self):
+        return self.moveY()
+
+    def addMove(self, xPos, yPos, moveX, moveY):
+        if (self.xPos == None):
+            self.xPos = xPos
+            self.yPos = yPos
+            self.moveX = moveX
+            self.moveY = moveY
+            self.next = None
+            return
+        while (self != None):
+            self = self.next
+
+        self.xPos = xPos
+        self.yPos = yPos
+        self.moveX = moveX
+        self.moveY = moveY
+        self.next = None
+
+    def getHead(self):
+        while (self.prev != None):
+            self = self.prev
+        return self
+
+
+# gets available moves and selects a random move
+def randomAImove(board, player):
+    list = getAvailableMoves(board, player)
+    index = 0
+    return random.choice(list)
+    # for item in list:
+    # mi = list[index]
+    # temp = copy.deepcopy(board)
+    # temp = makeMove(temp, mi[0], mi[1], mi[2], mi[3])
+    # printBoard(temp)
+    # temp = copy.deepcopy(board)
+    # index += 1
+
+
 def getAvailableMoves(board, player):
     # holds the coordinates of the piece and the location to move
     # find a piece belonging to player
+
+    mainList = []
+    l = [0, 0, 0, 0]
+    list = dllist()
     for i in range(8):
         for j in range(8):
+
             if board[i][j] != " ":
-                if board[i][j].toStr() == player:
+
+                if board[i][j].getPlayer() == player:
+
                     # find all the spots on the board that piece can move
-                    for x in range(8):
-                        for y in range(8):
+                    for y in range(8):
+                        for x in range(8):
+                            # if board[i][j] != " ":
                             if board[i][j].move(board, x, y):
-                                MI: moveInfo = moveInfo(i, j, y, x)
+                                # get the info of the legal move
+                                l = [j, i, x, y]
+                                # store the info in the main list
+                                mainList.append(l)
+
+    return mainList
+
+
+def showAvailMoves(list, board):
+    while (True):
+        MI = list.popright()
+        board[MI.moveY()][MI.moveX()] = board[MI.getY()][MI.getX()]
+        board[MI.getY()][MI.getX()] = " "
+        printBoard(board)
+        MI = MI.next
 
 
 class record(object):
@@ -1698,10 +1778,199 @@ def getEnemyKingX(piece):
         return
 
 
+def twoPlayerGame():
+    inCheckMate = False
+    whiteTurn = True
+
+    while (not inCheckMate):
+        try:
+            if (whiteTurn):
+                print("White Player Select a Piece")
+            else:
+                print("Black Player Select a Piece ")
+            p = input()
+            yVal = p[1]
+            yVal = int(yVal)
+            SelPce = convertInput(p[0].upper(), yVal)
+            if (whiteTurn and board[SelPce[0]][SelPce[1]].getPlayer() == "White"):
+
+                printBoardWithAvailMoves(board, SelPce[0], SelPce[1], showAvailMoves)
+                print("Select a move spot")
+                p = input()
+                yVal = p[1]
+                yVal = int(yVal)
+                move = convertInput(p[0].upper(), yVal)
+                yVal = int(yVal)
+                board = makeMove(board, SelPce[0], SelPce[1], move[0], move[1])
+                whiteTurn = not whiteTurn
+            elif not whiteTurn and board[SelPce[0]][SelPce[1]].getPlayer() == "Black":
+                printBoardWithAvailMoves(board, SelPce[0], SelPce[1], showAvailMoves)
+                print("Select a move spot")
+                p = input()
+                yVal = p[1]
+                yVal = int(yVal)
+                move = convertInput(p[0].upper(), yVal)
+                yVal = int(yVal)
+                board = makeMove(board, SelPce[0], SelPce[1], move[0], move[1])
+            else:
+                print("you need to select your own piece")
+
+        except(ValueError, NameError, AttributeError, IndexError):
+            print("Use correct input")
+    inCheckInfo = inCheck(board, "White")
+    if (inCheckInfo[0] == 1):
+        if (checkMate(board, "White", inCheckInfo)):
+            print("White is in Checkmate!")
+            inCheckMate = True
+        else:
+            print("White is in Check")
+    inCheckInfo = inCheck(board, "Black")
+    if (inCheckInfo[0] == 1):
+        if (checkMate(board, "Black", inCheckInfo)):
+            print("Black is in Checkmate!")
+            inCheckMate = True
+        else:
+            print("Black is in Check")
+
+    printBoard(board)
+    whiteTurn = not whiteTurn
+
+
+def twoAIGame():
+    numGames = 0
+    whiteWins = 0
+    blackWins = 0
+    whiteInCheck = 0
+    blackInCheck = 0
+    draw = 0
+    recordMoves = []
+    counter = 0
+    inCheckMate = False
+    # board = newGame()
+    print("Training....")
+    while (numGames < 10000):
+        board = newGame()
+        numGames += 1
+        winner = ""
+        #clear the moveList
+        recordMoves.clear()
+        counter=0
+
+        # print the info every 100 games
+        if (numGames % 100 == 0):
+            print("Number of games played: ")
+            print(numGames)
+            print("Wins for White: ")
+            print(whiteWins)
+            print("Wins for Black: ")
+            print(blackWins)
+            print("Draws: ")
+            print(draw)
+            print("White put into check: ")
+            print(whiteInCheck)
+            print("Black put into check: ")
+            print(blackInCheck)
+            blackInCheck = 0
+            whiteInCheck = 0
+        inCheckMate = False
+        try:
+            while (not inCheckMate):
+
+                # train on a 50 move limit draw
+                if (counter > 49):
+                    # print("50 move limit reached! match is a draw!")
+                    counter = 0
+                    draw += 1
+                    winner = "Draw"
+                    inCheckMate = True
+                counter += 1
+                # return a  random legal move
+                mi = randomAImove(board, "White")
+                # make the move
+                board = makeMove(board, mi[0], mi[1], mi[2], mi[3])
+                # store the move list for adding to csv file
+                recordMoves.extend(mi)
+                # see if black is in check
+                inCheckInfo = inCheck(board, "Black")
+                # see if black is in checkmate
+                if (inCheckInfo[0] == 1):
+                    if (checkMate(board, "Black", inCheckInfo)):
+                        print("Black is in Checkmate!")
+                        whiteWins += 1
+                        winner = "White"
+                        inCheckMate = True
+                        break
+
+                    else:
+                        # print("Black is in Check")
+                        whiteInCheck += 1
+                    # printBoard(board)
+
+                # return a random legal move
+                mi = randomAImove(board, "Black")
+                # make the move
+                board = makeMove(board, mi[0], mi[1], mi[2], mi[3])
+                # store the movelist for adding to csv file
+                recordMoves.extend(mi)
+                # see if white is in check
+                inCheckInfo = inCheck(board, "White")
+                # see if white is in checkMate
+                if (inCheckInfo[0] == 1):
+                    if (checkMate(board, "White", inCheckInfo)):
+                        print("White is in Checkmate!")
+                        blackWins += 1
+                        winner = "Black"
+                        inCheckMate = True
+                        break
+                    else:
+                        # print("White is in Check")
+                        blackInCheck += 1
+
+
+            if (winner != "Draw"):
+                writeDataToExcel(recordMoves, counter, winner, blackInCheck, whiteInCheck, blackWins, whiteWins,
+                                 numGames)
+
+
+
+
+        except(IndexError):
+            print("-------------------------------------------------------------------there was an error")
+            inCheckMate = True
+
+    print(
+        "END OF EVALUATION-------------------------------------------------------------------------------------------------------------------------")
+    print("Wins for White: ")
+    print(whiteWins)
+    print("Wins for Black: ")
+    print(blackWins)
+    print("Draws: ")
+    print(draw)
+    print("White put into check: ")
+    print(whiteInCheck)
+    print("Black put into check: ")
+    print(blackInCheck)
+    return True
+
+
+def writeDataToExcel(moveList, moveCount, winner, blackInCheck, whiteInCheck, blackWins, whiteWins, numGames):
+
+
+        row = [winner, moveCount, moveList,blackInCheck,whiteInCheck,blackWins,whiteWins,numGames]
+
+        with open('AI_data.csv', 'a') as csvFile:
+            writer = csv.writer(csvFile)
+            writer.writerow(row)
+
+        csvFile.close()
+
+
+
 class driver():
     l = [0, 0, 0]
+    list = dllist()
     # ensure that the test cases pass
-    testCases()
+    # testCases()
     print()
     print()
     # initilize 2d board with pieces
@@ -1713,7 +1982,19 @@ class driver():
     print("y for yes. any other key for no.")
     ai = input()
     if (ai == "y"):
+        # realPlayer = False
         AIPlayer = True
+        print("are there 1 or 2 AI Players?")
+        numAI = input()
+        if (numAI == 1):
+            print("is the AI player white or black? w for white or anything else for b")
+            color = input()
+            if (color == "w"):
+                AIColor = "White"
+            else:
+                AIColor = "Black"
+
+
     else:
         AIPlayer = False
 
@@ -1727,32 +2008,44 @@ class driver():
 
     # print out the board with pieces and color
     printBoard(board)
-    whiteTurn = False
+    whiteTurn = True
     inChk = False
     inCheckMate = False
+    if (AIPlayer):
+        inCheckMate = twoAIGame()
 
     while (not inCheckMate):
 
-        whiteTurn = not whiteTurn
-        # inCheckInfo is a list containing whether or not the player is in check and also
-        # holds the coordinates of the attacking piece
+        # inCheckMate = twoPlayerGame()
+
+        if (AIPlayer and numAI == 2):
+            mi = randomAImove(board, "White")
+            board = makeMove(board, mi[0], mi[1], mi[2], mi[3])
+            printBoard(board)
+            mi = randomAImove(board, "Black")
+            board = makeMove(board, mi[0], mi[1], mi[2], mi[3])
+            printBoard(board)
+        # inCheckInfo is a list containing whether or not the player is in check
+        # and holds the coordinates of the attacking piece
         inCheckInfo = inCheck(board, "White")
         if (inCheckInfo[0] == 1):
             if (checkMate(board, "White", inCheckInfo)):
                 print("White is in Checkmate!")
+                inCheckMate = True
             else:
                 print("White is in Check")
         inCheckInfo = inCheck(board, "Black")
         if (inCheckInfo[0] == 1):
             if (checkMate(board, "Black", inCheckInfo)):
                 print("Black is in Checkmate!")
+                inCheckMate = True
             else:
                 print("Black is in Check")
 
         try:
             print("Select a Piece")
-            #p =
-            #if (AIPlayer):
+            # p =
+            # if (AIPlayer):
 
             p = input()
             yVal = p[1]
@@ -1766,8 +2059,9 @@ class driver():
             move = convertInput(p[0].upper(), yVal)
             yVal = int(yVal)
             board = makeMove(board, SelPce[0], SelPce[1], move[0], move[1])
-        except(ValueError, NameError, AttributeError):
+        except(ValueError, NameError, AttributeError, IndexError):
             print("Use correct input")
         printBoard(board)
+        whiteTurn = not whiteTurn
 
     print("GAME OVER")
