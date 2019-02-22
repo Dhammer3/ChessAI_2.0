@@ -3,12 +3,22 @@ import array
 import random
 import sys
 import pandas as pd
-
+import numpy as np
+from  collections import deque
+from keras.preprocessing import sequence
+from keras.models import Sequential
+from keras.layers import Dense, Embedding
+from keras.layers import LSTM #used to stop data from being diluted over time, typical of RNN's
+from keras.datasets import imdb
+from keras.models import model_from_json
+from keras import optimizers
+from keras.models import load_model
+import keras
 
 from llist import dllist, dllistnode
 import openpyxl
 import csv
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # for training on gpu
+
 
 
 from colorama import Fore, Back, Style
@@ -23,12 +33,121 @@ onlyLegalMoves = True
 # todo the inCheck or checkmate method DONE✓
 # castling the king and rook ----todo DONE✓
 # ensure the move methods reflects the above----todo DONE✓
-# todo set if statement to determine if player is AI or not
-class neuralNetwork():
-    def __init__(self, x, y):
-        self.input = x
-        self.weights1 = np.random.rand(self.input.shape[1], 4)
+# todo set if statement to determine if player is AI or not---todo DONE✓
+#https://keon.io/deep-q-learning/
+#https://www.youtube.com/watch?v=aCEvtRtNO-M
+class DQNNPlayer(object):
+    def __init__(self, memSize, gamma,  epsilon, epsilonDecay, epsilonMin, learningRate, player):
+        self.gamma=gamma #decay or discount rate, to calculate the future discounted reward
+        self.epsilon=epsilon #exploration rate, this is the rate in which a player randomly makes a move
+        self.epsilonDecay=epsilonDecay #decreases the exploration rate as the number of games played increases
+        self.epsilonMin=epsilonMin #the player should explore at least this amount
+        self.learningRate=learningRate #how much the NN learns after each exploration
+        self.player=player
+        self.moveCount=0
+        d=deque()
+        self.memory=deque(maxlen=500000)
+        self.model=self.buildModel()
 
+    def buildModel(self):
+        model=Sequential()
+        model.add(Dense(units=768, input_shape=(41, 4)))
+        for i in range (100):
+            model.add(Dense(500, activation='tanh'))
+
+
+        model.add(Dense(500, activation='tanh'))
+        model.add(Dense(64, activation='tanh'))
+        model.compile(loss='mse',
+                      optimizer=keras.optimizers.Adam(lr=self.learningRate))
+        return model
+
+
+    def AImove(self, boardState):
+        listOfMoves = getAvailableMoves(boardState, self.player)
+        #listOfMoves=np.concatenate(listOfMoves, axis=0)
+        index = 0
+        if np.random.rand()<=self.epsilon:      #first give the opportunity for a random move.
+            self.moveCount += 1
+            self.epsilon *= self.epsilonDecay
+            return random.choice(listOfMoves)
+        else:
+            self.moveCount += 1
+            bestMove=self.model.predict(np.array(listOfMoves)) #model.predict assigns a weight to each of the possible moves
+                                                     # and chooses the best move based on past experience
+            return np.argmax(bestMove[0])            #best move is a placeholder for the predicted best move
+
+    def remember(self, state, action, reward, next_state, gameComplete):
+        from keras.models import load_model
+        self.memory.append((state, action, reward, next_state, gameComplete))
+        if(gameComplete):
+
+                self.model.save("AI_Chess_Model(1).h5")
+
+                del self.model
+
+                '''
+                 s = "y"
+                 if (self.player == "White"):
+                     print("writing to white")
+                     # serialize model to JSON
+                     model_json = self.model.to_json()
+                     with open("AI_Training_Data.json", "w") as json_file:
+                         json_file.write(model_json)
+                     # serialize weights to HDF5
+                     self.model.save_weights("AI_Chess_Model(1).h5")
+                     print("Saved model to disk")
+                     break
+                 else:
+                     print("writing to black")
+                     model_json = self.model.to_json()
+                     with open("AI_Training_Data.json", "w") as json_file:
+                         json_file.write(model_json)
+                     # serialize weights to HDF5
+                         self.model.save_weights("AI_Chess_Model(2).h5")
+                     print("Saved model to disk")
+                     break
+             except(FileNotFoundError):
+                 print("File does not exist, try again.")
+                 '''
+    def replay(self, batch_size):
+        minibatch =random.sample(self.memory, batch_size)
+        for state, action, reward, next_state, done in minibatch:
+            target=reward
+            if not done:
+                target = reward + self.gamma* np.amax(self.model.predict(next_state)[0])
+            target_f=self.model.predict(state)
+            target_f[0][action] = target
+            self.model.fit(state, target_f, epochs=1, verbose=0)
+        if(self.epsilon>self.epsilonMin):
+            self.epsilon *= self.epsilonDecay
+
+
+
+
+
+
+
+
+
+
+
+
+
+def convertData():
+
+    df=pd.read_csv('AI_data.csv', usecols=['Winner','ML'])
+    print(df)
+    df.head()
+   # print(df.head(2))
+    l=[]
+    for i in range(160):
+        l=df.iloc[i].tolist()
+        print(df.iloc[i])
+
+
+    print(l)
+    
 
 class piece(object):
     def __init__(self, player):
@@ -157,8 +276,13 @@ class pawn(piece):
             twoSpaceMove = True
         if abs(moveY - self.getY()) > 1 and abs(moveX - self.getX()) > 0:
             return False
-        if (twoSpaceMove and self.getMoveCount() > 1):
+        if (twoSpaceMove and self.getMoveCount() > 1 ):
             return False
+        if(twoSpaceMove and self.player=="White" and board[self.getY()-1][self.getX()]!=" "):
+            return False
+        if (twoSpaceMove and self.player == "Black" and board[self.getY() + 1][self.getX()] != " "):
+            return False
+
 
         if (board[moveY][moveX] != " "):
             pieceInMoveSpot = True
@@ -1763,6 +1887,37 @@ def showAvailMoves(list, board):
         printBoard(board)
         MI = MI.next
 
+def getEvaluation(board, player, moveCount):
+    moveSum=0
+    enemymMoveSum=0
+    pieceTotalVal=0
+    enemyTotalVal=0
+    summation=0;
+
+    for i in range(8):
+        for j in range(8):
+            for x in range(8):
+                for y in range(8):
+                    if(board[i][j]!=" "):
+                        if(board[i][j].getPlayer()==player):
+                            pieceTotalVal+=board[i][j].value
+                        if (board[i][j].getPlayer() != player):
+                            enemyTotalVal += board[i][j].value
+                        if(board[i][j].move(board, x, y) and board[i][j].getPlayer()==player):
+                            moveSum+=board[i][j].value
+                        elif (board[i][j].move(board, x, y) and board[i][j].getPlayer() != player):
+                            enemymMoveSum+=board[i][j].value
+    summation=(moveSum+pieceTotalVal-enemyTotalVal-enemymMoveSum)
+    summation=summation/((moveCount+2)^2)
+    inCheckInfo = inCheck(board, "White")
+    if(inCheckInfo[0] == 1 and "White"!=player):
+        summation *= 1000
+    inCheckInfo = inCheck(board, "Black")
+    if (inCheckInfo[0] == 1 and "Black" != player):
+        summation *= 1000
+
+    return(summation)
+
 
 class record(object):
     def __init__(self, player1, player2, board):
@@ -1836,7 +1991,16 @@ def twoPlayerGame():
     whiteTurn = not whiteTurn
 
 
+def Train_AI():
+    convertData()
+    return True
+#memSize, gamma,  epsilon, epsilonDecay, epsilonMin, learningRate, playe
 def twoAIGame():
+    wp: DQNNPlayer = DQNNPlayer(50000,0.95, 1.0, 0.995, 0.01, 0.001, "White")
+    bp: DQNNPlayer = DQNNPlayer(50000, 0.95, 1.0, 0.995, 0.01, 0.001, "Black")
+    wp.buildModel()
+    bp.buildModel()
+
     numGames = 0
     whiteWins = 0
     blackWins = 0
@@ -1848,7 +2012,7 @@ def twoAIGame():
     inCheckMate = False
     # board = newGame()
     print("Training....")
-    while (numGames < 10000):
+    while (numGames < 1000):
         board = newGame()
         numGames += 1
         winner = ""
@@ -1882,12 +2046,18 @@ def twoAIGame():
                     counter = 0
                     draw += 1
                     winner = "Draw"
-                    inCheckMate = True
+                    print(winner)
+                    break
                 counter += 1
+
                 # return a  random legal move
-                mi = randomAImove(board, "White")
+                mi = wp.AImove(board)
                 # make the move
-                board = makeMove(board, mi[0], mi[1], mi[2], mi[3])
+                board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3]) #update the board
+                reward=getEvaluation(board, wp.player, counter)
+
+                wp.remember(board, mi, reward, board2, inCheckMate )
+               # wp.replay(whiteWins)
                 # store the move list for adding to csv file
                 recordMoves.extend(mi)
                 # see if black is in check
@@ -1899,17 +2069,20 @@ def twoAIGame():
                         whiteWins += 1
                         winner = "White"
                         inCheckMate = True
+                        printBoard(board)
                         break
 
                     else:
                         # print("Black is in Check")
                         whiteInCheck += 1
                     # printBoard(board)
-
                 # return a random legal move
-                mi = randomAImove(board, "Black")
+                mi = bp.AImove( board)
                 # make the move
-                board = makeMove(board, mi[0], mi[1], mi[2], mi[3])
+                board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3])
+                reward = getEvaluation(board, bp.player, counter)
+                bp.remember(board, mi, reward, board2, inCheckMate )
+                bp.replay(blackWins)
                 # store the movelist for adding to csv file
                 recordMoves.extend(mi)
                 # see if white is in check
@@ -1921,15 +2094,21 @@ def twoAIGame():
                         blackWins += 1
                         winner = "Black"
                         inCheckMate = True
+                        printBoard(board)
                         break
                     else:
                         # print("White is in Check")
                         blackInCheck += 1
 
 
+
             if (winner != "Draw"):
                 writeDataToExcel(recordMoves, counter, winner, blackInCheck, whiteInCheck, blackWins, whiteWins,
                                  numGames)
+                if(winner=="Black"):
+                    bp.remember(board, mi, reward, board2, inCheckMate)
+                else:
+                    wp.remember(board, mi, reward, board2, inCheckMate)
 
 
 
@@ -1952,16 +2131,161 @@ def twoAIGame():
     print(blackInCheck)
     return True
 
+def tester():
+
+    wp: DQNNPlayer = DQNNPlayer(50000, 0.95, 1.0, 0.995, 0.01, 0.001, "White")
+   # wp=
+    wp.buildModel()
+    wp.model=load_model("AI_Chess_Model(1).h5")
+    #json_file = open('AI_Training_Data.json', 'r')
+    #loaded_model_json = json_file.read()
+    #json_file.close()
+    #wp = model_from_json(loaded_model_json)
+    # load weights into new model
+    #wp=load_model("AI_Chess_Model(2).h5")
+    print("Loaded model from disk")
+
+    # evaluate loaded model on test data
+    print("evaluating loaded model...")
+   # wp=wp.buildModel()
+
+    print("Loaded model from disk")
+
+
+    #wp=keras.models.load_model("AI_Chess_Model(2).h5")
+    print("Loaded model from disk")
+
+   # wp.buildModel()
+
+
+    numGames = 0
+    whiteWins = 0
+    blackWins = 0
+    whiteInCheck = 0
+    blackInCheck = 0
+    draw = 0
+    recordMoves = []
+    counter = 0
+    inCheckMate = False
+    # board = newGame()
+    print("Training....")
+    while (numGames < 1000):
+        board = newGame()
+        numGames += 1
+        winner = ""
+        # clear the moveList
+        recordMoves.clear()
+        counter = 0
+
+        # print the info every 100 games
+        if (numGames % 100 == 0):
+            print("Number of games played: ")
+            print(numGames)
+            print("Wins for White: ")
+            print(whiteWins)
+            print("Wins for Black: ")
+            print(blackWins)
+            print("Draws: ")
+            print(draw)
+            print("White put into check: ")
+            print(whiteInCheck)
+            print("Black put into check: ")
+            print(blackInCheck)
+            blackInCheck = 0
+            whiteInCheck = 0
+        inCheckMate = False
+        try:
+            while (not inCheckMate):
+
+                # train on a 50 move limit draw
+                if (counter > 49):
+                    # print("50 move limit reached! match is a draw!")
+                    counter = 0
+                    draw += 1
+                    winner = "Draw"
+                    print(winner)
+                    break;
+                counter += 1
+
+                # return a  random legal move
+                mi = wp.AImove(board)
+                # make the move
+                board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3])  # update the board
+                reward = getEvaluation(board, wp.player, counter)
+
+               # wp.remember(board, mi, reward, board2, inCheckMate)
+                # store the move list for adding to csv file
+                recordMoves.extend(mi)
+                # see if black is in check
+                inCheckInfo = inCheck(board, "Black")
+                # see if black is in checkmate
+                if (inCheckInfo[0] == 1):
+                    if (checkMate(board, "Black", inCheckInfo)):
+                        print("Black is in Checkmate!")
+                        whiteWins += 1
+                        winner = "White"
+                        inCheckMate = True
+                        printBoard(board)
+                        break
+
+                    else:
+                        # print("Black is in Check")
+                        whiteInCheck += 1
+                    # printBoard(board)
+                # return a random legal move
+                mi = randomAImove(board, "Black")
+                # make the move
+                board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3])
+                #reward = getEvaluation(board, bp.player, counter)
+                #bp.remember(board, mi, reward, board2, inCheckMate)
+                # store the movelist for adding to csv file
+                recordMoves.extend(mi)
+                # see if white is in check
+                inCheckInfo = inCheck(board, "White")
+                # see if white is in checkMate
+                if (inCheckInfo[0] == 1):
+                    if (checkMate(board, "White", inCheckInfo)):
+                        print("White is in Checkmate!")
+                        blackWins += 1
+                        winner = "Black"
+                        inCheckMate = True
+                        printBoard(board)
+                        break
+                    else:
+                        # print("White is in Check")
+                        blackInCheck += 1
+
+            if (winner != "Draw"):
+                writeDataToExcel(recordMoves, counter, winner, blackInCheck, whiteInCheck, blackWins, whiteWins,
+                                 numGames)
+
+
+
+
+
+        except(IndexError):
+            print("-------------------------------------------------------------------there was an error")
+            inCheckMate = True
+
+    print(
+        "END OF EVALUATION-------------------------------------------------------------------------------------------------------------------------")
+    print("Wins for White: ")
+    print(whiteWins)
+    print("Wins for Black: ")
+    print(blackWins)
+    print("Draws: ")
+    print(draw)
+    print("White put into check: ")
+    print(whiteInCheck)
+    print("Black put into check: ")
+    print(blackInCheck)
+    return True
 
 def writeDataToExcel(moveList, moveCount, winner, blackInCheck, whiteInCheck, blackWins, whiteWins, numGames):
-
-
         row = [winner, moveCount, moveList,blackInCheck,whiteInCheck,blackWins,whiteWins,numGames]
-
         with open('AI_data.csv', 'a') as csvFile:
             writer = csv.writer(csvFile)
             writer.writerow(row)
-
         csvFile.close()
 
 
@@ -1978,41 +2302,42 @@ class driver():
 
     coordinates = findKingPos(board)
 
-    print("Is this game an AI game for data collection? ")
-    print("y for yes. any other key for no.")
+    print("Is this game an AI game for data collection or training? ")
+    print("y for yes, t for train or any other key for no.")
     ai = input()
+    test=False
     if (ai == "y"):
         # realPlayer = False
+        train=False
         AIPlayer = True
-        print("are there 1 or 2 AI Players?")
-        numAI = input()
-        if (numAI == 1):
-            print("is the AI player white or black? w for white or anything else for b")
-            color = input()
-            if (color == "w"):
-                AIColor = "White"
-            else:
-                AIColor = "Black"
+    if(ai=="t"):
+        AIPlayer=True
+        train =True
+    if(ai=="test"):
+        test=True
 
 
-    else:
-        AIPlayer = False
 
-    print("Would you like to display available moves when a piece is selected? ")
-    print("y for yes. any other key for no.")
-    availM = input()
-    if (availM == "y"):
-        showAvailMoves = True
-    else:
-        showAvailMoves = False
+
+
+
+
+    showAvailMoves = True
+
 
     # print out the board with pieces and color
     printBoard(board)
     whiteTurn = True
     inChk = False
     inCheckMate = False
+    if(test):
+        print("here")
+        inCheckMate =tester()
+    if(AIPlayer and train):
+        inCheckMate=twoAIGame()
     if (AIPlayer):
         inCheckMate = twoAIGame()
+
 
     while (not inCheckMate):
 
