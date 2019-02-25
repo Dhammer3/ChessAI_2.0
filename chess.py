@@ -4,15 +4,19 @@ import random
 import sys
 import pandas as pd
 import numpy as np
+from numpy import argmax
+from numpy import array
 from  collections import deque
 from keras.preprocessing import sequence
 from keras.models import Sequential
-from keras.layers import Dense, Embedding
+from keras.layers import Dense, Embedding, Flatten
 from keras.layers import LSTM #used to stop data from being diluted over time, typical of RNN's
 from keras.datasets import imdb
 from keras.models import model_from_json
 from keras import optimizers
 from keras.models import load_model
+from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import OneHotEncoder
 import keras
 
 from llist import dllist, dllistnode
@@ -29,11 +33,7 @@ realPlayer = False
 onlyLegalMoves = True
 
 
-# todo fix bug in queen and bishop move logic-----todo DONE ✓
-# todo the inCheck or checkmate method DONE✓
-# castling the king and rook ----todo DONE✓
-# ensure the move methods reflects the above----todo DONE✓
-# todo set if statement to determine if player is AI or not---todo DONE✓
+
 #https://keon.io/deep-q-learning/
 #https://www.youtube.com/watch?v=aCEvtRtNO-M
 class DQNNPlayer(object):
@@ -51,11 +51,8 @@ class DQNNPlayer(object):
 
     def buildModel(self):
         model=Sequential()
-        model.add(Dense(units=768, input_shape=(41, 4)))
-        for i in range (100):
-            model.add(Dense(500, activation='tanh'))
-
-
+        model.add(Flatten())
+        model.add(Dense(768, input_shape=(41, 4)))
         model.add(Dense(500, activation='tanh'))
         model.add(Dense(64, activation='tanh'))
         model.compile(loss='mse',
@@ -64,21 +61,52 @@ class DQNNPlayer(object):
 
 
     def AImove(self, boardState):
+        #get the list of moves
         listOfMoves = getAvailableMoves(boardState, self.player)
-        #listOfMoves=np.concatenate(listOfMoves, axis=0)
+        #transform the list of moves to a list of encoded string moves
+        encodedListOfMoves=getAvailableMovesEncoded(boardState, self.player)
+
+        #transform the string encoding into one_hot_binary encoding
+        #https://machinelearningmastery.com/how-to-one-hot-encode-sequence-data-in-python/
+        encodedListOfMoves=array(encodedListOfMoves)
+        #print(encodedListOfMoves)
+        label_encoder=LabelEncoder()
+        integer_encoded=label_encoder.fit_transform(encodedListOfMoves)
+        #print(integer_encoded)
+        #encode integer to binary
+        onehot_encoded=OneHotEncoder(sparse=False)
+        integer_encoded=integer_encoded.reshape(len(integer_encoded),1)
+        onehot_encoded=onehot_encoded.fit_transform(integer_encoded)
+        #print(onehot_encoded)
+        #invert back to string encoding
+        inverted=label_encoder.inverse_transform([argmax(onehot_encoded[0, :])])
+        print(inverted)
+        inverted=decoder(inverted)
+        return inverted
+
+
         index = 0
+
         if np.random.rand()<=self.epsilon:      #first give the opportunity for a random move.
             self.moveCount += 1
             self.epsilon *= self.epsilonDecay
+           # print("random")
             return random.choice(listOfMoves)
         else:
+            print("we made a decision!!!!!------------------")
             self.moveCount += 1
-            bestMove=self.model.predict(np.array(listOfMoves)) #model.predict assigns a weight to each of the possible moves
-                                                     # and chooses the best move based on past experience
+            bestMove=self.model.predict(np.array(onehot_encoded)) #model.predict assigns a weight to each of the possible moves
+            inverted = label_encoder.inverse_transform([argmax(bestMove[0, :])])                                         # and chooses the best move based on past experience
+            bestMove[0]=decoder(inverted[0])
             return np.argmax(bestMove[0])            #best move is a placeholder for the predicted best move
 
     def remember(self, state, action, reward, next_state, gameComplete):
         from keras.models import load_model
+        action = getAvailableMovesEncoded(state, self.player)
+        state=one_hot_encoder(state, True)
+        action=one_hot_encoder(action, False)
+        next_state=one_hot_encoder(next_state, True)
+
         self.memory.append((state, action, reward, next_state, gameComplete))
         if(gameComplete):
 
@@ -132,6 +160,29 @@ class DQNNPlayer(object):
 
 
 
+def one_hot_encoder(toEncode, isBoard):
+    #toVector=[]
+    if(isBoard):
+        toEncode=sum(toEncode, [])
+        for i in range(64):
+            if(toEncode[i]!=" "):
+                toEncode[i]=toEncode[i].toStr()
+            else:
+                toEncode[i]=" "
+
+
+    # transform the string encoding into one_hot_binary encoding
+    # https://machinelearningmastery.com/how-to-one-hot-encode-sequence-data-in-python/
+    toEncode = array(toEncode)
+    # print(encodedListOfMoves)
+    label_encoder = LabelEncoder()
+    integer_encoded = label_encoder.fit_transform(toEncode)
+    # print(integer_encoded)
+    # encode integer to binary
+    onehot_encoded = OneHotEncoder(sparse=False)
+    integer_encoded = integer_encoded.reshape(len(integer_encoded), 1)
+    onehot_encoded = onehot_encoded.fit_transform(integer_encoded)
+    return onehot_encoded
 
 
 def convertData():
@@ -148,11 +199,14 @@ def convertData():
 
     print(l)
     
-
+#parent class of all chess piece child objects
 class piece(object):
     def __init__(self, player):
         self.player = player
         self.moveCount = 0
+        self.encodedVal=""
+    def getEncodedVal(self):
+        return self.encodedVal
 
     def moveCounter(self):
         self.moveCount += 1
@@ -209,7 +263,7 @@ class piece(object):
         else:
             return True
 
-
+#used as a helper function to ensure player is not putting their own king in check
 def putOwnKingInCheck(board, xPos, yPos, moveX, moveY):
     try:
         temp = copy.deepcopy(board)
@@ -1164,23 +1218,14 @@ def newGame():  #
         # cols X
         for j in range(8):
             if (b[i][j] != " "):
+                #set the positions
                 b[i][j].setX(j)
                 b[i][j].setY(i)
+
+                #encode the pieces relative to their string and initial position
+                b[i][j].encodedVal = str.encode(b[i][j].toStr())+str.encode(str(i))+str.encode(str(j))
+
     return b
-
-
-'''
-def mover():
-    whiteTurn = True
-    board = newGame()
-    player1 = "White"
-    player2 = "Black"
-    if (whiteTurn):
-        whiteTurn = not whiteTurn
-        for i in range(8):
-            for j in range(8):
-                if board[i][j].toStr(0 == "White"):
-'''
 
 
 def testGame():
@@ -1240,7 +1285,7 @@ def testGame():
                 b[i][j].setY(i)
     return b
 
-
+#sets the xPos and yPos piece variables
 def setPositions(b):
     for i in range(8):
         # cols X
@@ -1673,6 +1718,7 @@ def findKingPos(board):
     return coordinates
 
 
+#test if @param player is in check
 def inCheck(board, player):
     coordinates = findKingPos(board)
     bKingY = coordinates[0]
@@ -1709,7 +1755,6 @@ def inCheck(board, player):
                         r = [1, i, j]
                         return r
     return r
-
 
 def checkMate(board, player, coordinates):
     # assume that the player is in checkmate unless they are not.
@@ -1772,18 +1817,17 @@ def checkMate(board, player, coordinates):
 
     # find if there is a move availble to take the king out of check
     return checkMte
-
-
-def convertInput(input, int):
-    x = input[0]
+#converts a user entered string to board indices
+def convertInput(xInput, yInput):
+    x = xInput[0]
     x = ord(x)
     x = x - 65
-    y = int
+    y = yInput
     y -= 1
     r = [x, y]
     return r
 
-
+#helper function for InCheckMate and king.move() functions
 def canEnemyMove(board, player, x, y):
     temp = copy.deepcopy(board)
     for i in range(8):
@@ -1794,7 +1838,7 @@ def canEnemyMove(board, player, x, y):
 
     return False
 
-
+#object placeholder for move Information
 class moveInfo():
     def __init__(self):
         self.xPos = None
@@ -1837,29 +1881,93 @@ class moveInfo():
             self = self.prev
         return self
 
-
 # gets available moves and selects a random move
 def randomAImove(board, player):
     list = getAvailableMoves(board, player)
-    index = 0
     return random.choice(list)
-    # for item in list:
-    # mi = list[index]
-    # temp = copy.deepcopy(board)
-    # temp = makeMove(temp, mi[0], mi[1], mi[2], mi[3])
-    # printBoard(temp)
-    # temp = copy.deepcopy(board)
-    # index += 1
 
+#convert figuirine algebraic to board indices.
+def decoder(moveStr):
+    moveStr=moveStr.tostring()
+    #moveStr=np.array(moveStr)
+    # 	moveStr will have a value similair to this: ♘f3♞c6
+    moveStr=moveStr.tolist()
+    #moveStr=array(moveStr)
+    xPos=(moveStr).index(1,1)
+    yPos=(moveStr).index(2,2)
+    moveX=(moveStr).index(4,4)
+    moveY=(moveStr).index(5,5)
+    SelPce = convertInput(xPos.upper(), yPos)
+    moveLoc= convertInput(moveX.upper(), moveY)
+    moveInfo=[selPce[0], selPce[1], moveLoc[0], moveLoc[1]]
+    return moveInfo
 
+#encode a move to figuirine algebraic
+def encoder(board, availableMove):
+    encodedStr=""
+    xPos=availableMove[0]
+    yPos=availableMove[1]
+    moveX=availableMove[2]
+    moveY=availableMove[3]
+    player = board[yPos][xPos].getPlayer()
+    if(player=="White"):
+        enemyPlayer = "Black"
+        inCheckInfo = inCheck(board, enemyPlayer)
+    else:
+        enemyPlayer = "White"
+        inCheckInfo = inCheck(board, enemyPlayer)
+
+    # convert the move info to figurine algebraic
+    # 	♘f3♞c6
+    # https://en.wikipedia.org/wiki/Chess_notation
+    convertedXpos=xPos+65
+    convertedXpos=chr(convertedXpos)
+    convertedYpos=yPos+1
+
+    convertedMoveX=moveX+65
+    convertedMoveX=chr(convertedMoveX)
+    convertedMoveY=moveY+1
+
+    encodedStr+=board[yPos][xPos].toStr() +convertedXpos+(str(convertedYpos))
+    if(board[moveY][moveX]!=" "):
+        encodedStr+=board[moveY][moveX].toStr()
+
+    else:
+        encodedStr+=" "
+    encodedStr += convertedMoveX
+    encodedStr += str(convertedMoveY)
+
+    # see if enemy player is in check or checkMate
+    if (inCheckInfo[0] == 1):
+        if (checkMate(board, enemyPlayer, inCheckInfo)):
+            encodedStr+="#" #represents a checkmate
+        else:
+            encodedStr+="+" #represents a check
+    return encodedStr
+
+#return a vector of encoded available moves
+def getAvailableMovesEncoded(board, player):
+    encodedVector=[]
+    listOfMoves =[]
+    availableMove=[]
+    index=0
+    listOfMoves=getAvailableMoves(board, player)
+    while(index<len(listOfMoves)):
+        availableMove=listOfMoves.pop(index)
+        index+=1
+        encodedVector.append(encoder(board, availableMove))
+    return encodedVector
+
+#return a list of uncoded availble moves as board indices
 def getAvailableMoves(board, player):
     # holds the coordinates of the piece and the location to move
     # find a piece belonging to player
 
     mainList = []
     l = [0, 0, 0, 0]
-    list = dllist()
+    #rows
     for i in range(8):
+        #cols
         for j in range(8):
 
             if board[i][j] != " ":
@@ -1867,7 +1975,9 @@ def getAvailableMoves(board, player):
                 if board[i][j].getPlayer() == player:
 
                     # find all the spots on the board that piece can move
+                    #rows
                     for y in range(8):
+                        #cols
                         for x in range(8):
                             # if board[i][j] != " ":
                             if board[i][j].move(board, x, y):
@@ -1878,15 +1988,7 @@ def getAvailableMoves(board, player):
 
     return mainList
 
-
-def showAvailMoves(list, board):
-    while (True):
-        MI = list.popright()
-        board[MI.moveY()][MI.moveX()] = board[MI.getY()][MI.getX()]
-        board[MI.getY()][MI.getX()] = " "
-        printBoard(board)
-        MI = MI.next
-
+#return an evaluation to act as a fitness function to train the DNN
 def getEvaluation(board, player, moveCount):
     moveSum=0
     enemymMoveSum=0
@@ -1918,21 +2020,7 @@ def getEvaluation(board, player, moveCount):
 
     return(summation)
 
-
-class record(object):
-    def __init__(self, player1, player2, board):
-        self.player1 = player1
-        self.player2 = player2
-        self.board = board
-
-
-def getEnemyKingX(piece):
-    if piece.getPlayer() == "Black":
-        return
-    else:
-        return
-
-
+#standard chess game between two human opponents
 def twoPlayerGame():
     inCheckMate = False
     whiteTurn = True
@@ -1990,11 +2078,11 @@ def twoPlayerGame():
     printBoard(board)
     whiteTurn = not whiteTurn
 
-
 def Train_AI():
     convertData()
     return True
-#memSize, gamma,  epsilon, epsilonDecay, epsilonMin, learningRate, playe
+
+#two AI game for training and observation
 def twoAIGame():
     wp: DQNNPlayer = DQNNPlayer(50000,0.95, 1.0, 0.995, 0.01, 0.001, "White")
     bp: DQNNPlayer = DQNNPlayer(50000, 0.95, 1.0, 0.995, 0.01, 0.001, "Black")
@@ -2054,6 +2142,7 @@ def twoAIGame():
                 mi = wp.AImove(board)
                 # make the move
                 board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3]) #update the board
+                printBoard(board)
                 reward=getEvaluation(board, wp.player, counter)
 
                 wp.remember(board, mi, reward, board2, inCheckMate )
@@ -2080,6 +2169,7 @@ def twoAIGame():
                 mi = bp.AImove( board)
                 # make the move
                 board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3])
+                printBoard(board)
                 reward = getEvaluation(board, bp.player, counter)
                 bp.remember(board, mi, reward, board2, inCheckMate )
                 bp.replay(blackWins)
@@ -2113,7 +2203,7 @@ def twoAIGame():
 
 
 
-        except(IndexError):
+        except():
             print("-------------------------------------------------------------------there was an error")
             inCheckMate = True
 
@@ -2131,6 +2221,7 @@ def twoAIGame():
     print(blackInCheck)
     return True
 
+#test efficiency of DNN
 def tester():
 
     wp: DQNNPlayer = DQNNPlayer(50000, 0.95, 1.0, 0.995, 0.01, 0.001, "White")
@@ -2287,8 +2378,6 @@ def writeDataToExcel(moveList, moveCount, winner, blackInCheck, whiteInCheck, bl
             writer = csv.writer(csvFile)
             writer.writerow(row)
         csvFile.close()
-
-
 
 class driver():
     l = [0, 0, 0]
