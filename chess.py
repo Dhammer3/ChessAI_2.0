@@ -6,24 +6,23 @@ import pandas as pd
 import numpy as np
 from numpy import argmax
 from numpy import array
-from  collections import deque
+from collections import deque
 from keras.preprocessing import sequence
 from keras.models import Sequential
 from keras.layers import Dense, Embedding, Flatten
-from keras.layers import LSTM #used to stop data from being diluted over time, typical of RNN's
+from keras.layers import Dense, Dropout, LSTM, \
+    CuDNNLSTM  # used to stop data from being diluted over time, typical of RNN's
 from keras.datasets import imdb
 from keras.models import model_from_json
 from keras import optimizers
 from keras.models import load_model
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import OneHotEncoder
+from keras.losses import categorical_crossentropy
 import keras
-
 from llist import dllist, dllistnode
 import openpyxl
 import csv
-
-
 
 from colorama import Fore, Back, Style
 import copy
@@ -33,143 +32,200 @@ realPlayer = False
 onlyLegalMoves = True
 
 
-
-#https://keon.io/deep-q-learning/
-#https://www.youtube.com/watch?v=aCEvtRtNO-M
+# note, see _encoders.py. a line of code was commented out to suppress warnings
+# https://keon.io/deep-q-learning/
+# https://www.youtube.com/watch?v=aCEvtRtNO-M
 class DQNNPlayer(object):
-    def __init__(self, memSize, gamma,  epsilon, epsilonDecay, epsilonMin, learningRate, player):
-        self.gamma=gamma #decay or discount rate, to calculate the future discounted reward
-        self.epsilon=epsilon #exploration rate, this is the rate in which a player randomly makes a move
-        self.epsilonDecay=epsilonDecay #decreases the exploration rate as the number of games played increases
-        self.epsilonMin=epsilonMin #the player should explore at least this amount
-        self.learningRate=learningRate #how much the NN learns after each exploration
-        self.player=player
-        self.moveCount=0
-        d=deque()
-        self.memory=deque(maxlen=500000)
-        self.model=self.buildModel()
+    def __init__(self, memSize, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, player):
+        self.gamma = gamma  # decay or discount rate, to calculate the future discounted reward
+        self.epsilon = epsilon  # exploration rate, this is the rate in which a player randomly makes a move
+        self.epsilonDecay = epsilonDecay  # decreases the exploration rate as the number of games played increases
+        self.epsilonMin = epsilonMin  # the player should explore at least this amount
+        self.learningRate = learningRate  # how much the NN learns after each exploration
+        self.player = player
+        self.moveCount = 0
+        d = deque()
+        self.memory = deque(maxlen=500000)
+        self.model = ""
+        self.model_is_built = False
 
     def buildModel(self):
-        model=Sequential()
-        model.add(Flatten())
-        model.add(Dense(768, input_shape=(41, 4)))
-        model.add(Dense(500, activation='tanh'))
-        model.add(Dense(64, activation='tanh'))
-        model.compile(loss='mse',
-                      optimizer=keras.optimizers.Adam(lr=self.learningRate))
-        return model
+        i = 0
 
+        x_train = []
+        y_train = []
+        x_test = []
+        y_test = []
+
+
+        #pop all the data from memory into the training format
+        #x variable holds the encoded chess board
+        #y varaibale represents corresponding binary move
+        while (True):
+            try:
+                data = self.memory.popleft()
+                x_train.append(data[0])
+                y_train.append(data[2])
+                i += 1
+            except(IndexError):
+                break
+        x_train = np.array(x_train)
+        y_train = np.array(y_train)
+        print("Shape of data")
+        print(x_train.shape)
+        print(y_train.shape)
+        print(x_train.shape)
+        print(y_train.shape)
+
+        #setup the input neurons
+        model = Sequential()
+        input_shape = x_train[0].shape
+        model.add(LSTM(128, input_shape=(input_shape), activation='relu', return_sequences=True))
+        model.add(Dropout(0.2))
+        model.add(LSTM(128, activation='relu'))
+        model.add(Dropout(0.2))
+
+        #add two dense layers
+        model.add(Dense(128, activation='relu'))
+        model.add(Dropout(0.2))
+        model.add(Dense(16, activation='sigmoid'))
+
+        #custom optimizer
+        opt = keras.optimizers.Adam(lr=0.003, decay=1e-3)
+
+        model.compile(optimizer=opt, metrics=['accuracy'], loss='binary_crossentropy')
+
+        # reshape the y_train (1,4,4) input into Dense 16 input array
+        y_train = np.reshape(y_train, (y_train.shape[0],-1))
+
+        # fit the data and train the model
+        model.fit(x_train, y_train, epochs=20, validation_data=(x_train, y_train))
 
     def AImove(self, boardState):
-        #get the list of moves
+        # get the list of moves
         listOfMoves = getAvailableMoves(boardState, self.player)
-        #transform the list of moves to a list of encoded string moves
-        encodedListOfMoves=getAvailableMovesEncoded(boardState, self.player)
-
-        #transform the string encoding into one_hot_binary encoding
-        #https://machinelearningmastery.com/how-to-one-hot-encode-sequence-data-in-python/
-        encodedListOfMoves=array(encodedListOfMoves)
-        #print(encodedListOfMoves)
-        label_encoder=LabelEncoder()
-        integer_encoded=label_encoder.fit_transform(encodedListOfMoves)
-        #print(integer_encoded)
-        #encode integer to binary
-        onehot_encoded=OneHotEncoder(sparse=False)
-        integer_encoded=integer_encoded.reshape(len(integer_encoded),1)
-        onehot_encoded=onehot_encoded.fit_transform(integer_encoded)
-        #print(onehot_encoded)
-        #invert back to string encoding
-        inverted=label_encoder.inverse_transform([argmax(onehot_encoded[0, :])])
-        print(inverted)
-        inverted=decoder(inverted)
-        return inverted
-
 
         index = 0
 
-        if np.random.rand()<=self.epsilon:      #first give the opportunity for a random move.
-            self.moveCount += 1
-            self.epsilon *= self.epsilonDecay
-           # print("random")
-            return random.choice(listOfMoves)
-        else:
-            print("we made a decision!!!!!------------------")
-            self.moveCount += 1
-            bestMove=self.model.predict(np.array(onehot_encoded)) #model.predict assigns a weight to each of the possible moves
-            inverted = label_encoder.inverse_transform([argmax(bestMove[0, :])])                                         # and chooses the best move based on past experience
-            bestMove[0]=decoder(inverted[0])
-            return np.argmax(bestMove[0])            #best move is a placeholder for the predicted best move
+        # if np.random.rand()<=self.epsilon:      #first give the opportunity for a random move.
+        self.moveCount += 1
+        # self.epsilon *= self.epsilonDecay
+        print(self.player + " making random move")
+        return random.choice(listOfMoves)
+        '''
+        #else:
 
-    def remember(self, state, action, reward, next_state, gameComplete):
+            # transform the list of moves to a list of encoded string moves
+            encodedListOfMoves = getAvailableMovesEncoded(boardState, self.player)
+
+            # transform the string encoding into one_hot_binary encoding
+            encodedListOfMoves = array(encodedListOfMoves)
+
+            label_encoder = LabelEncoder()
+            integer_encoded = label_encoder.fit_transform(encodedListOfMoves)
+
+            # encode integer to binary
+            onehot_encoded = OneHotEncoder(sparse=False)
+            integer_encoded = integer_encoded.reshape(len(integer_encoded), 1)
+            onehot_encoded = onehot_encoded.fit_transform(integer_encoded)
+
+            # invert back to string encoding
+            inverted = label_encoder.inverse_transform([argmax(onehot_encoded[0, :])])
+            inverted = decoder(inverted)
+            print(self.player + " made a decision!!!!!------------------")
+            self.moveCount += 1
+            return inverted        #best move is a placeholder for the predicted best move
+            '''
+
+    def remember(self, state, action, next_state, reward, gameComplete):
+
         from keras.models import load_model
-        action = getAvailableMovesEncoded(state, self.player)
-        state=one_hot_encoder(state, True)
-        action=one_hot_encoder(action, False)
-        next_state=one_hot_encoder(next_state, True)
 
-        self.memory.append((state, action, reward, next_state, gameComplete))
-        if(gameComplete):
+        action = convert_to_binary_matrix(action)
+        #print(action)
 
-                self.model.save("AI_Chess_Model(1).h5")
+        board_state_encoded = one_hot_encoder(state, True)
+        next_board_state_encoded = one_hot_encoder(next_state, True)
 
-                del self.model
+        if (self.memory.__contains__(board_state_encoded) and self.memory.__contains__(action)):
+            return
 
-                '''
-                 s = "y"
-                 if (self.player == "White"):
-                     print("writing to white")
-                     # serialize model to JSON
-                     model_json = self.model.to_json()
-                     with open("AI_Training_Data.json", "w") as json_file:
-                         json_file.write(model_json)
-                     # serialize weights to HDF5
-                     self.model.save_weights("AI_Chess_Model(1).h5")
-                     print("Saved model to disk")
-                     break
-                 else:
-                     print("writing to black")
-                     model_json = self.model.to_json()
-                     with open("AI_Training_Data.json", "w") as json_file:
-                         json_file.write(model_json)
-                     # serialize weights to HDF5
-                         self.model.save_weights("AI_Chess_Model(2).h5")
-                     print("Saved model to disk")
-                     break
-             except(FileNotFoundError):
-                 print("File does not exist, try again.")
-                 '''
+        self.memory.append((board_state_encoded, next_board_state_encoded, action, reward))
+
+        # print(decoder(action))
+        #self.buildModel()
+
+        if (gameComplete):
+            print("preparing to build model...")
+            self.buildModel()
+            print("saving model to disk")
+            if (self.player == "White"):
+                self.model.save_weights('AI_Chess_Model(3).h5', True)
+
+            else:
+                self.model.save_weights('AI_Chess_Model(5).h5', True)
+            self.model_is_built = True
+
+            # del self.model
+
+            '''
+             s = "y"
+             if (self.player == "White"):
+                 print("writing to white")
+                 # serialize model to JSON
+                 model_json = self.model.to_json()
+                 with open("AI_Training_Data.json", "w") as json_file:
+                     json_file.write(model_json)
+                 # serialize weights to HDF5
+                 self.model.save_weights("AI_Chess_Model(1).h5")
+                 print("Saved model to disk")
+                 break
+             else:
+                 print("writing to black")
+                 model_json = self.model.to_json()
+                 with open("AI_Training_Data.json", "w") as json_file:
+                     json_file.write(model_json)
+                 # serialize weights to HDF5
+                     self.model.save_weights("AI_Chess_Model(2).h5")
+                 print("Saved model to disk")
+                 break
+         except(FileNotFoundError):
+             print("File does not exist, try again.")
+             '''
+
+
+
     def replay(self, batch_size):
-        minibatch =random.sample(self.memory, batch_size)
+        minibatch = random.sample(self.memory, batch_size)
         for state, action, reward, next_state, done in minibatch:
-            target=reward
+            target = reward
             if not done:
-                target = reward + self.gamma* np.amax(self.model.predict(next_state)[0])
-            target_f=self.model.predict(state)
+                target = reward + self.gamma * np.amax(self.model.predict(next_state)[0])
+            target_f = self.model.predict(state)
             target_f[0][action] = target
             self.model.fit(state, target_f, epochs=1, verbose=0)
-        if(self.epsilon>self.epsilonMin):
+        if (self.epsilon > self.epsilonMin):
             self.epsilon *= self.epsilonDecay
 
-
-
-
-
-
-
-
-
-
-
+def convert_to_binary_matrix(action):
+        int_str = ""
+        move_to_bin = []
+        for i in range(4):
+            int_str += (("{0:{fill}4b}".format(action[i], fill='0')))
+        for i in range(16):
+            move_to_bin.append(int(int_str[i]))
+        #print(move_to_bin)
+        move_to_bin = np.reshape(move_to_bin, (-1, 4))
+        return move_to_bin
 def one_hot_encoder(toEncode, isBoard):
-    #toVector=[]
-    if(isBoard):
-        toEncode=sum(toEncode, [])
+    # toVector=[]
+    if (isBoard):
+        toEncode = sum(toEncode, [])
         for i in range(64):
-            if(toEncode[i]!=" "):
-                toEncode[i]=toEncode[i].toStr()
+            if (toEncode[i] != " "):
+                toEncode[i] = toEncode[i].toStr()
             else:
-                toEncode[i]=" "
-
+                toEncode[i] = " "
 
     # transform the string encoding into one_hot_binary encoding
     # https://machinelearningmastery.com/how-to-one-hot-encode-sequence-data-in-python/
@@ -186,25 +242,25 @@ def one_hot_encoder(toEncode, isBoard):
 
 
 def convertData():
-
-    df=pd.read_csv('AI_data.csv', usecols=['Winner','ML'])
+    df = pd.read_csv('AI_data.csv', usecols=['Winner', 'ML'])
     print(df)
     df.head()
-   # print(df.head(2))
-    l=[]
+    # print(df.head(2))
+    l = []
     for i in range(160):
-        l=df.iloc[i].tolist()
+        l = df.iloc[i].tolist()
         print(df.iloc[i])
 
-
     print(l)
-    
-#parent class of all chess piece child objects
+
+
+# parent class of all chess piece child objects
 class piece(object):
     def __init__(self, player):
         self.player = player
         self.moveCount = 0
-        self.encodedVal=""
+        self.encodedVal = ""
+
     def getEncodedVal(self):
         return self.encodedVal
 
@@ -263,15 +319,20 @@ class piece(object):
         else:
             return True
 
-#used as a helper function to ensure player is not putting their own king in check
+
+# used as a helper function to ensure player is not putting their own king in check
 def putOwnKingInCheck(board, xPos, yPos, moveX, moveY):
     try:
+        # make the mock move
         temp = copy.deepcopy(board)
         player = board[yPos][xPos].getPlayer()
         temp[moveY][moveX] = temp[yPos][xPos]
         temp[yPos][xPos] = " "
-        chkInfo = inCheck(temp, player)
-
+        # see if the mock move will put the moving player into check
+        try:
+            chkInfo = inCheck(temp, player)
+        except(RecursionError):
+            return True
         if (chkInfo[0] == 1):
             return True
         else:
@@ -330,13 +391,12 @@ class pawn(piece):
             twoSpaceMove = True
         if abs(moveY - self.getY()) > 1 and abs(moveX - self.getX()) > 0:
             return False
-        if (twoSpaceMove and self.getMoveCount() > 1 ):
+        if (twoSpaceMove and self.getMoveCount() > 1):
             return False
-        if(twoSpaceMove and self.player=="White" and board[self.getY()-1][self.getX()]!=" "):
+        if (twoSpaceMove and self.player == "White" and board[self.getY() - 1][self.getX()] != " "):
             return False
         if (twoSpaceMove and self.player == "Black" and board[self.getY() + 1][self.getX()] != " "):
             return False
-
 
         if (board[moveY][moveX] != " "):
             pieceInMoveSpot = True
@@ -344,6 +404,7 @@ class pawn(piece):
         if (pieceInMoveSpot):
             if (board[moveY][moveX].getPlayer() == self.getPlayer()):
                 attackingFriendlyPiece = True
+                return False
                 # print("attackingFriendlyPiece")
             if (board[moveY][moveX].getType() == "K"):
                 return False
@@ -639,6 +700,7 @@ class knight(piece):
         if (
                 horizontal == 2 and vertical == 1
                 or vertical == 2 and horizontal == 1
+                and not putOwnKingInCheck(board, self.getX(), self.getY(), moveX, moveY)
 
                 # and attackingFriendlyPiece
         ):
@@ -1218,12 +1280,12 @@ def newGame():  #
         # cols X
         for j in range(8):
             if (b[i][j] != " "):
-                #set the positions
+                # set the positions
                 b[i][j].setX(j)
                 b[i][j].setY(i)
 
-                #encode the pieces relative to their string and initial position
-                b[i][j].encodedVal = str.encode(b[i][j].toStr())+str.encode(str(i))+str.encode(str(j))
+                # encode the pieces relative to their string and initial position
+                b[i][j].encodedVal = str.encode(b[i][j].toStr()) + str.encode(str(i)) + str.encode(str(j))
 
     return b
 
@@ -1285,7 +1347,8 @@ def testGame():
                 b[i][j].setY(i)
     return b
 
-#sets the xPos and yPos piece variables
+
+# sets the xPos and yPos piece variables
 def setPositions(b):
     for i in range(8):
         # cols X
@@ -1718,25 +1781,28 @@ def findKingPos(board):
     return coordinates
 
 
-#test if @param player is in check
+# test if @param player is in check
 def inCheck(board, player):
     coordinates = findKingPos(board)
     bKingY = coordinates[0]
     bKingX = coordinates[1]
     wkingY = coordinates[2]
     wkingX = coordinates[3]
+    # use a piece other than a king to test if black is in check or not
+    pb0: pawn = pawn("Black")
+    pb1: pawn = pawn("White")
     r = [0, -1, -1]
     kingX = 0
     kingY = 0
 
     temp = copy.deepcopy(board)
     if (player == "White"):
-        temp[wkingY][wkingX] = " "
+        temp[wkingY][wkingX] = pb1
         kingX = wkingX
         kingY = wkingY
     elif (player == "Black"):
         # print("We are seeing if black is in CHECK---------------------------------------------------------------------------------------------")
-        temp[bKingY][bKingX] = " "
+        temp[bKingY][bKingX] = pb0
         kingX = bKingX
         kingY = bKingY
     # print("TEMP")
@@ -1750,11 +1816,11 @@ def inCheck(board, player):
                         r = [1, i, j]
                         return r
 
-                    if temp[i][j].getPlayer() != player and temp[i][j].move(temp, kingX, kingY) and temp[i][
-                        j].getType() != "p":
+                    if temp[i][j].getPlayer() != player and temp[i][j].move(temp, kingX, kingY):
                         r = [1, i, j]
                         return r
     return r
+
 
 def checkMate(board, player, coordinates):
     # assume that the player is in checkmate unless they are not.
@@ -1817,17 +1883,20 @@ def checkMate(board, player, coordinates):
 
     # find if there is a move availble to take the king out of check
     return checkMte
-#converts a user entered string to board indices
+
+
+# converts a user entered string to board indices
 def convertInput(xInput, yInput):
     x = xInput[0]
     x = ord(x)
     x = x - 65
-    y = yInput
+    y = int(yInput)
     y -= 1
     r = [x, y]
     return r
 
-#helper function for InCheckMate and king.move() functions
+
+# helper function for InCheckMate and king.move() functions
 def canEnemyMove(board, player, x, y):
     temp = copy.deepcopy(board)
     for i in range(8):
@@ -1838,7 +1907,8 @@ def canEnemyMove(board, player, x, y):
 
     return False
 
-#object placeholder for move Information
+
+# object placeholder for move Information
 class moveInfo():
     def __init__(self):
         self.xPos = None
@@ -1881,36 +1951,42 @@ class moveInfo():
             self = self.prev
         return self
 
+
 # gets available moves and selects a random move
 def randomAImove(board, player):
     list = getAvailableMoves(board, player)
     return random.choice(list)
 
-#convert figuirine algebraic to board indices.
+
+# convert figuirine algebraic to board indices.
 def decoder(moveStr):
-    moveStr=moveStr.tostring()
-    #moveStr=np.array(moveStr)
+    temp = []
+    temp = moveStr.tolist()
+    print(temp[0])
+
+    # moveStr=np.array(moveStr)
     # 	moveStr will have a value similair to this: ♘f3♞c6
-    moveStr=moveStr.tolist()
-    #moveStr=array(moveStr)
-    xPos=(moveStr).index(1,1)
-    yPos=(moveStr).index(2,2)
-    moveX=(moveStr).index(4,4)
-    moveY=(moveStr).index(5,5)
-    SelPce = convertInput(xPos.upper(), yPos)
-    moveLoc= convertInput(moveX.upper(), moveY)
-    moveInfo=[selPce[0], selPce[1], moveLoc[0], moveLoc[1]]
+
+    # moveStr=array(moveStr)
+    xPos = temp[0][1]
+    yPos = temp[0][2]
+    moveX = temp[0][4]
+    moveY = temp[0][5]
+    selPce = convertInput(xPos.upper(), yPos)
+    moveLoc = convertInput(moveX.upper(), moveY)
+    moveInfo = [selPce[0], selPce[1], moveLoc[0], moveLoc[1]]
     return moveInfo
 
-#encode a move to figuirine algebraic
+
+# encode a move to figuirine algebraic
 def encoder(board, availableMove):
-    encodedStr=""
-    xPos=availableMove[0]
-    yPos=availableMove[1]
-    moveX=availableMove[2]
-    moveY=availableMove[3]
+    encodedStr = ""
+    xPos = availableMove[0]
+    yPos = availableMove[1]
+    moveX = availableMove[2]
+    moveY = availableMove[3]
     player = board[yPos][xPos].getPlayer()
-    if(player=="White"):
+    if (player == "White"):
         enemyPlayer = "Black"
         inCheckInfo = inCheck(board, enemyPlayer)
     else:
@@ -1920,54 +1996,54 @@ def encoder(board, availableMove):
     # convert the move info to figurine algebraic
     # 	♘f3♞c6
     # https://en.wikipedia.org/wiki/Chess_notation
-    convertedXpos=xPos+65
-    convertedXpos=chr(convertedXpos)
-    convertedYpos=yPos+1
+    convertedXpos = xPos + 65
+    convertedXpos = chr(convertedXpos)
+    convertedYpos = yPos + 1
 
-    convertedMoveX=moveX+65
-    convertedMoveX=chr(convertedMoveX)
-    convertedMoveY=moveY+1
+    convertedMoveX = moveX + 65
+    convertedMoveX = chr(convertedMoveX)
+    convertedMoveY = moveY + 1
 
-    encodedStr+=board[yPos][xPos].toStr() +convertedXpos+(str(convertedYpos))
-    if(board[moveY][moveX]!=" "):
-        encodedStr+=board[moveY][moveX].toStr()
+    encodedStr += board[yPos][xPos].toStr() + convertedXpos + (str(convertedYpos))
+    if (board[moveY][moveX] != " "):
+        encodedStr += board[moveY][moveX].toStr()
 
     else:
-        encodedStr+=" "
+        encodedStr += " "
     encodedStr += convertedMoveX
     encodedStr += str(convertedMoveY)
 
     # see if enemy player is in check or checkMate
     if (inCheckInfo[0] == 1):
         if (checkMate(board, enemyPlayer, inCheckInfo)):
-            encodedStr+="#" #represents a checkmate
+            encodedStr += "#"  # represents a checkmate
         else:
-            encodedStr+="+" #represents a check
+            encodedStr += "+"  # represents a check
     return encodedStr
 
-#return a vector of encoded available moves
+
+# return a vector of encoded available moves
 def getAvailableMovesEncoded(board, player):
-    encodedVector=[]
-    listOfMoves =[]
-    availableMove=[]
-    index=0
-    listOfMoves=getAvailableMoves(board, player)
-    while(index<len(listOfMoves)):
-        availableMove=listOfMoves.pop(index)
-        index+=1
+    encodedVector = []
+    index = 0
+    listOfMoves = getAvailableMoves(board, player)
+    while (index < len(listOfMoves)):
+        availableMove = listOfMoves.pop(index)
+        index += 1
         encodedVector.append(encoder(board, availableMove))
     return encodedVector
 
-#return a list of uncoded availble moves as board indices
+
+# return a list of uncoded availble moves as board indices
 def getAvailableMoves(board, player):
     # holds the coordinates of the piece and the location to move
     # find a piece belonging to player
 
     mainList = []
     l = [0, 0, 0, 0]
-    #rows
+    # rows
     for i in range(8):
-        #cols
+        # cols
         for j in range(8):
 
             if board[i][j] != " ":
@@ -1975,9 +2051,9 @@ def getAvailableMoves(board, player):
                 if board[i][j].getPlayer() == player:
 
                     # find all the spots on the board that piece can move
-                    #rows
+                    # rows
                     for y in range(8):
-                        #cols
+                        # cols
                         for x in range(8):
                             # if board[i][j] != " ":
                             if board[i][j].move(board, x, y):
@@ -1988,39 +2064,41 @@ def getAvailableMoves(board, player):
 
     return mainList
 
-#return an evaluation to act as a fitness function to train the DNN
+
+# return an evaluation to act as a fitness function to train the DNN
 def getEvaluation(board, player, moveCount):
-    moveSum=0
-    enemymMoveSum=0
-    pieceTotalVal=0
-    enemyTotalVal=0
-    summation=0;
+    moveSum = 0
+    enemymMoveSum = 0
+    pieceTotalVal = 0
+    enemyTotalVal = 0
+    summation = 0;
 
     for i in range(8):
         for j in range(8):
             for x in range(8):
                 for y in range(8):
-                    if(board[i][j]!=" "):
-                        if(board[i][j].getPlayer()==player):
-                            pieceTotalVal+=board[i][j].value
+                    if (board[i][j] != " "):
+                        if (board[i][j].getPlayer() == player):
+                            pieceTotalVal += board[i][j].value
                         if (board[i][j].getPlayer() != player):
                             enemyTotalVal += board[i][j].value
-                        if(board[i][j].move(board, x, y) and board[i][j].getPlayer()==player):
-                            moveSum+=board[i][j].value
+                        if (board[i][j].move(board, x, y) and board[i][j].getPlayer() == player):
+                            moveSum += board[i][j].value
                         elif (board[i][j].move(board, x, y) and board[i][j].getPlayer() != player):
-                            enemymMoveSum+=board[i][j].value
-    summation=(moveSum+pieceTotalVal-enemyTotalVal-enemymMoveSum)
-    summation=summation/((moveCount+2)^2)
+                            enemymMoveSum += board[i][j].value
+    summation = (moveSum + pieceTotalVal - enemyTotalVal - enemymMoveSum)
+    summation = summation / ((moveCount + 2) ^ 2)
     inCheckInfo = inCheck(board, "White")
-    if(inCheckInfo[0] == 1 and "White"!=player):
+    if (inCheckInfo[0] == 1 and "White" != player):
         summation *= 1000
     inCheckInfo = inCheck(board, "Black")
     if (inCheckInfo[0] == 1 and "Black" != player):
         summation *= 1000
 
-    return(summation)
+    return (summation)
 
-#standard chess game between two human opponents
+
+# standard chess game between two human opponents
 def twoPlayerGame():
     inCheckMate = False
     whiteTurn = True
@@ -2078,16 +2156,26 @@ def twoPlayerGame():
     printBoard(board)
     whiteTurn = not whiteTurn
 
+
 def Train_AI():
     convertData()
     return True
 
-#two AI game for training and observation
+
+# two AI game for training and observation
 def twoAIGame():
-    wp: DQNNPlayer = DQNNPlayer(50000,0.95, 1.0, 0.995, 0.01, 0.001, "White")
-    bp: DQNNPlayer = DQNNPlayer(50000, 0.95, 1.0, 0.995, 0.01, 0.001, "Black")
-    wp.buildModel()
-    bp.buildModel()
+    # def __init__(self, memSize, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, player):
+
+    gamma = 0.95  # decay or discount rate, to calculate the future discounted reward
+    epsilon = 1.0  # exploration rate, this is the rate in which a player randomly makes a move
+    epsilonDecay = 0.999995  # decreases the exploration rate as the number of games played increases
+    epsilonMin = 0.01  # the player should explore at least this amount
+    learningRate = 0.01  # how much the NN learns after each exploration
+    wp: DQNNPlayer = DQNNPlayer(50000, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, "White")
+    bp: DQNNPlayer = DQNNPlayer(50000, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, "Black")
+
+    # wp.buildModel()
+    # bp.buildModel()
 
     numGames = 0
     whiteWins = 0
@@ -2101,12 +2189,20 @@ def twoAIGame():
     # board = newGame()
     print("Training....")
     while (numGames < 1000):
+        wp.epsilonDecay -= 0.0001
+        bp.epsilonDecay -= 0.0001
         board = newGame()
         numGames += 1
         winner = ""
-        #clear the moveList
+        # clear the moveList
         recordMoves.clear()
-        counter=0
+        counter = 0
+        if (wp.model_is_built):
+            print("Loading saved model for White.... ")
+            wp.model = load_model('AI_Chess_Model(3).h5')
+        if (bp.model_is_built):
+            print("Loading saved model for Black.... ")
+            bp.model = load_model('AI_Chess_Model(5).h5')
 
         # print the info every 100 games
         if (numGames % 100 == 0):
@@ -2134,21 +2230,30 @@ def twoAIGame():
                     counter = 0
                     draw += 1
                     winner = "Draw"
+                    wp.remember(board, mi, board2, reward, inCheckMate)
+                    bp.remember(board, mi, board2, reward, inCheckMate)
+
+                    # reset the epsilon value to avoid learning plateau
+                    wp.epsilon = epsilon
+                    bp.epsilon = epsilon
                     print(winner)
                     break
                 counter += 1
 
+                temp = copy.deepcopy(board)
                 # return a  random legal move
-                mi = wp.AImove(board)
+                mi = wp.AImove(temp)
+                print(encoder(temp, mi))
                 # make the move
-                board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3]) #update the board
-                printBoard(board)
-                reward=getEvaluation(board, wp.player, counter)
+                board2 = makeMove(temp, mi[0], mi[1], mi[2], mi[3])  # update the board
+                reward = getEvaluation(board2, wp.player, counter)
 
-                wp.remember(board, mi, reward, board2, inCheckMate )
-               # wp.replay(whiteWins)
+                # store the previous state, move, current state, reward, and if white is in checkmate
+                wp.remember(board, mi, board2, reward, inCheckMate)
+                # wp.replay(whiteWins)
                 # store the move list for adding to csv file
-                recordMoves.extend(mi)
+                board = copy.deepcopy(board2)  # update the board
+                # printBoard(board)
                 # see if black is in check
                 inCheckInfo = inCheck(board, "Black")
                 # see if black is in checkmate
@@ -2166,13 +2271,19 @@ def twoAIGame():
                         whiteInCheck += 1
                     # printBoard(board)
                 # return a random legal move
-                mi = bp.AImove( board)
+                temp = copy.deepcopy(board)
+                mi = bp.AImove(temp)
+                print(encoder(temp, mi))
                 # make the move
-                board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3])
-                printBoard(board)
+                board2 = makeMove(temp, mi[0], mi[1], mi[2], mi[3])
                 reward = getEvaluation(board, bp.player, counter)
-                bp.remember(board, mi, reward, board2, inCheckMate )
-                bp.replay(blackWins)
+
+                # store the previous state, move, current state, reward, and if black is in checkmate
+                bp.remember(board, mi, board2, reward, inCheckMate)
+
+                board = copy.deepcopy(board2)
+                # printBoard(board)
+
                 # store the movelist for adding to csv file
                 recordMoves.extend(mi)
                 # see if white is in check
@@ -2189,16 +2300,18 @@ def twoAIGame():
                     else:
                         # print("White is in Check")
                         blackInCheck += 1
-
-
-
+            #write the data to a .csv file
             if (winner != "Draw"):
                 writeDataToExcel(recordMoves, counter, winner, blackInCheck, whiteInCheck, blackWins, whiteWins,
                                  numGames)
-                if(winner=="Black"):
-                    bp.remember(board, mi, reward, board2, inCheckMate)
+                wp.epsilonDecay -= 0.01
+                bp.epsilonDecay -= 0.01
+                wp.learningRate += 0.01
+                bp.learningRate += 0.01
+                if (winner == "Black"):
+                    bp.remember(board, mi, board2, reward, inCheckMate)
                 else:
-                    wp.remember(board, mi, reward, board2, inCheckMate)
+                    wp.remember(board, mi, board2, reward, inCheckMate)
 
 
 
@@ -2221,33 +2334,31 @@ def twoAIGame():
     print(blackInCheck)
     return True
 
-#test efficiency of DNN
-def tester():
 
+# test efficiency of DNN
+def tester():
     wp: DQNNPlayer = DQNNPlayer(50000, 0.95, 1.0, 0.995, 0.01, 0.001, "White")
-   # wp=
+    # wp=
     wp.buildModel()
-    wp.model=load_model("AI_Chess_Model(1).h5")
-    #json_file = open('AI_Training_Data.json', 'r')
-    #loaded_model_json = json_file.read()
-    #json_file.close()
-    #wp = model_from_json(loaded_model_json)
+    wp.model = load_model("AI_Chess_Model(1).h5")
+    # json_file = open('AI_Training_Data.json', 'r')
+    # loaded_model_json = json_file.read()
+    # json_file.close()
+    # wp = model_from_json(loaded_model_json)
     # load weights into new model
-    #wp=load_model("AI_Chess_Model(2).h5")
+    # wp=load_model("AI_Chess_Model(2).h5")
     print("Loaded model from disk")
 
     # evaluate loaded model on test data
     print("evaluating loaded model...")
-   # wp=wp.buildModel()
+    # wp=wp.buildModel()
 
     print("Loaded model from disk")
 
-
-    #wp=keras.models.load_model("AI_Chess_Model(2).h5")
+    # wp=keras.models.load_model("AI_Chess_Model(2).h5")
     print("Loaded model from disk")
 
-   # wp.buildModel()
-
+    # wp.buildModel()
 
     numGames = 0
     whiteWins = 0
@@ -2304,7 +2415,7 @@ def tester():
                 board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3])  # update the board
                 reward = getEvaluation(board, wp.player, counter)
 
-               # wp.remember(board, mi, reward, board2, inCheckMate)
+                # wp.remember(board, mi, reward, board2, inCheckMate)
                 # store the move list for adding to csv file
                 recordMoves.extend(mi)
                 # see if black is in check
@@ -2327,8 +2438,8 @@ def tester():
                 mi = randomAImove(board, "Black")
                 # make the move
                 board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3])
-                #reward = getEvaluation(board, bp.player, counter)
-                #bp.remember(board, mi, reward, board2, inCheckMate)
+                # reward = getEvaluation(board, bp.player, counter)
+                # bp.remember(board, mi, reward, board2, inCheckMate)
                 # store the movelist for adding to csv file
                 recordMoves.extend(mi)
                 # see if white is in check
@@ -2372,12 +2483,14 @@ def tester():
     print(blackInCheck)
     return True
 
+
 def writeDataToExcel(moveList, moveCount, winner, blackInCheck, whiteInCheck, blackWins, whiteWins, numGames):
-        row = [winner, moveCount, moveList,blackInCheck,whiteInCheck,blackWins,whiteWins,numGames]
-        with open('AI_data.csv', 'a') as csvFile:
-            writer = csv.writer(csvFile)
-            writer.writerow(row)
-        csvFile.close()
+    row = [winner, moveCount, moveList, blackInCheck, whiteInCheck, blackWins, whiteWins, numGames]
+    with open('AI_data.csv', 'a') as csvFile:
+        writer = csv.writer(csvFile)
+        writer.writerow(row)
+    csvFile.close()
+
 
 class driver():
     l = [0, 0, 0]
@@ -2394,39 +2507,31 @@ class driver():
     print("Is this game an AI game for data collection or training? ")
     print("y for yes, t for train or any other key for no.")
     ai = input()
-    test=False
+    test = False
     if (ai == "y"):
         # realPlayer = False
-        train=False
+        train = False
+        AIPlayer = False
+    if (ai == "t"):
         AIPlayer = True
-    if(ai=="t"):
-        AIPlayer=True
-        train =True
-    if(ai=="test"):
-        test=True
-
-
-
-
-
-
+        train = True
+    if (ai == "test"):
+        test = True
 
     showAvailMoves = True
-
 
     # print out the board with pieces and color
     printBoard(board)
     whiteTurn = True
     inChk = False
     inCheckMate = False
-    if(test):
+    if (test):
         print("here")
-        inCheckMate =tester()
-    if(AIPlayer and train):
-        inCheckMate=twoAIGame()
+        inCheckMate = tester()
+    if (AIPlayer and train):
+        inCheckMate = twoAIGame()
     if (AIPlayer):
         inCheckMate = twoAIGame()
-
 
     while (not inCheckMate):
 
@@ -2452,6 +2557,7 @@ class driver():
         if (inCheckInfo[0] == 1):
             if (checkMate(board, "Black", inCheckInfo)):
                 print("Black is in Checkmate!")
+
                 inCheckMate = True
             else:
                 print("Black is in Check")
