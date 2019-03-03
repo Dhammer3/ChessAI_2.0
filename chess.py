@@ -44,23 +44,24 @@ class DQNNPlayer(object):
         self.learningRate = learningRate  # how much the NN learns after each exploration
         self.player = player
         self.moveCount = 0
-       # d = deque()
+        # d = deque()
         self.memory = deque(maxlen=500000)
         self.model = ""
         self.model_is_built = False
 
     def buildModel(self):
+        print("building " + self.player + " player model...")
         i = 0
 
         x_train = []
         y_train = []
         x_test = []
         y_test = []
-        x_in_order=[]
-        y_in_order=[]
+        x_in_order = []
+        y_in_order = []
         train_count = 0
         test_count = 0
-        switch =True
+        switch = True
 
         # pop all the data from memory into the training format
         # x variable holds the encoded chess board
@@ -71,24 +72,23 @@ class DQNNPlayer(object):
                 rand = np.random.random()
 
                 # add to each of the training and testing arrays randomly and uniform
-                if (rand<=0.65):
+                if (rand <= 0.65):
                     x_train.extend(data[0])
                     y_train.extend(data[1])
                     train_count += 1
-                    switch=True
+                    switch = True
                 else:
                     x_test.extend(data[0])
                     y_test.extend(data[1])
                     test_count += 1
-                    switch=False
-                data=""
+                    switch = False
+                data = ""
 
             except(IndexError):
                 break
 
-
-        x_train = np.resize(x_train, (-1,4, 64))
-        x_test = np.resize(x_test, (-1,4, 64))
+        x_train = np.resize(x_train, (-1, 4, 64))
+        x_test = np.resize(x_test, (-1, 4, 64))
 
         x_train = np.array(x_train)
         x_test = np.array(x_test)
@@ -99,15 +99,14 @@ class DQNNPlayer(object):
         y_train = np.resize(y_train, (x_train.shape[0], 16))  # reshape into arrays of 16
         y_test = np.resize(y_test, (x_test.shape[0], 16))  # reshape into arrays of 16
 
-        #y_train=np.reshape(y_train(1,4,4))
-        #y_test = np.reshape(y_test(1, 4, 4))
+        # y_train=np.reshape(y_train(1,4,4))
+        # y_test = np.reshape(y_test(1, 4, 4))
 
         print("Shape of data:")
         print(x_train.shape)
         print(y_train.shape)
         print(x_test.shape)
         print(y_test.shape)
-
 
         print("Compiling model...")
         model = Sequential()
@@ -120,7 +119,7 @@ class DQNNPlayer(object):
         # add two dense layers
         model.add(Dense(256, activation='relu'))
         model.add(Dropout(0.2))
-        #16 is the shape of the output data, binary representation of a move
+        # 16 is the shape of the output data, binary representation of a move
         model.add(Dense(16, activation='sigmoid'))
 
         # custom optimizer
@@ -129,14 +128,22 @@ class DQNNPlayer(object):
         model.compile(optimizer=opt, metrics=['accuracy'], loss='binary_crossentropy')
 
         # reshape the y_train (1,4,4) input into Dense 16 input array
-        y_train = np.reshape(y_train, (-1, 16))#reshape into arrays of 16
-        #y_test=y_train
-        #x_test=x_train
-        y_test = np.reshape(y_test, (-1, 16))#reshape into arrays of 16
-        #print(y_train.shape)
-        #print(y_test.shape)
+        y_train = np.reshape(y_train, (-1, 16))  # reshape into arrays of 16
+        # y_test=y_train
+        # x_test=x_train
+        y_test = np.reshape(y_test, (-1, 16))  # reshape into arrays of 16
+        # print(y_train.shape)
+        # print(y_test.shape)
         # fit the data and train the model
         model.fit(x_train, y_train, epochs=200, validation_data=(x_test, y_test))
+        # self.model=model.save_weights()
+        self.model = model
+        self.model_is_built = True
+        print("saving model to disk")
+        if (self.player == "White"):
+            self.model.save_weights('AI_Chess_Model(4).h5', True)
+        else:
+            self.model.save_weights('AI_Chess_Model(5).h5', True)
 
     def AImove(self, boardState):
         # get the list of moves
@@ -173,23 +180,22 @@ class DQNNPlayer(object):
             return inverted        #best move is a placeholder for the predicted best move
             '''
 
-    def remember(self, state, action, next_state, reward, gameComplete):
+    def remember(self, state, action, next_state, reward, gameComplete, winningPlayer):
         from keras.models import load_model
 
         action = convert_to_binary_matrix(action, False)
-        state= convert_to_binary_matrix(state, True)
+        state = convert_to_binary_matrix(state, True)
         next_board_state_encoded = one_hot_encoder(next_state, True)
 
-        self.memory.append((state, action))
-        if (gameComplete):
-            print("preparing to build model...")
-            self.buildModel()
-            print("saving model to disk")
-            #if (self.player == "White"):
-                #self.model.save_weights('AI_Chess_Model(3).h5', True)
-            #else:
-                #self.model.save_weights('AI_Chess_Model(5).h5', True)
-            self.model_is_built = True
+        if (gameComplete and winningPlayer == self.player):
+            print("put game info into memory")
+            self.memory.append((state, action))
+
+            # if (self.player == "White"):
+            # self.model.save_weights('AI_Chess_Model(3).h5', True)
+            # else:
+            # self.model.save_weights('AI_Chess_Model(5).h5', True)
+            # self.model_is_built = True
 
     # del self.model
 
@@ -237,24 +243,26 @@ class DQNNPlayer(object):
 def convert_to_binary_matrix(to_encode, is_game_board):
     int_str = ""
     move_to_bin = []
-    #to encode the board
+    # to encode the board
     if is_game_board:
         for i in range(8):
             for j in range(8):
-                if(to_encode[i][j]!=" "):
+                if (to_encode[i][j] != " "):
+                    # convert the integer value of each piece to 4 bit binary
                     int_str += (("{0:{fill}4b}".format(to_encode[i][j].value, fill='0')))
                 else:
-                    int_str += (("{0:{fill}4b}".format(0, fill='0'))) #spot is empty, give value zero
+                    # spot is empty, give value zero
+                    int_str += (("{0:{fill}4b}".format(0, fill='0')))
     else:
         for i in range(len(to_encode)):
             int_str += (("{0:{fill}4b}".format(to_encode[i], fill='0')))
     for i in range(len(int_str)):
         move_to_bin.append(int(int_str[i]))
     # print(move_to_bin)
-    if(is_game_board):
-        move_to_bin = np.reshape(move_to_bin, (4, 64))#4 bits*8 columns*8 rows
+    if (is_game_board):
+        move_to_bin = np.reshape(move_to_bin, (4, 64))  # 4 bits*8 columns*8 rows
     else:
-        move_to_bin = np.reshape(move_to_bin, (-1, 16))#4 bits, 4 integers
+        move_to_bin = np.reshape(move_to_bin, (-1, 16))  # 4 bits, 4 integers
     return move_to_bin
 
 
@@ -300,7 +308,7 @@ class piece(object):
     def __init__(self, player):
         self.player = player
         self.moveCount = 0
-        self.encodedVal = ""
+        self.encodedVal = 0
 
     def getEncodedVal(self):
         return self.encodedVal
@@ -345,20 +353,21 @@ class piece(object):
     def setGameDate(self, data):
         self.data = data
 
-    def moveIsValid(self, moveVector, board, moveX, moveY):
-        checkSpot = board[moveY][moveX]
-        if (checkSpot != " "):
-            boardSpotIsEmpty = False
-        else:
-            boardSpotIsEmpty = True
-        if (not (boardSpotIsEmpty)):
-            if (checkSpot.getPlayer() == self.getPlayer()) or (checkSpot.getType == "K"):
-                return False
-        if (boardSpotIsEmpty and self.getType() == "p"
-                and self.moveCount > 0 and abs(moveVector.getY()) != 1):
-            return False;
-        else:
-            return True
+
+def moveIsValid(self, moveVector, board, moveX, moveY):
+    checkSpot = board[moveY][moveX]
+    if (checkSpot != " "):
+        boardSpotIsEmpty = False
+    else:
+        boardSpotIsEmpty = True
+    if (not (boardSpotIsEmpty)):
+        if (checkSpot.getPlayer() == self.getPlayer()) or (checkSpot.getType == "K"):
+            return False
+    if (boardSpotIsEmpty and self.getType() == "p"
+            and self.moveCount > 0 and abs(moveVector.getY()) != 1):
+        return False;
+    else:
+        return True
 
 
 # used as a helper function to ensure player is not putting their own king in check
@@ -370,30 +379,32 @@ def putOwnKingInCheck(board, xPos, yPos, moveX, moveY):
         temp[moveY][moveX] = temp[yPos][xPos]
         temp[yPos][xPos] = " "
         # see if the mock move will put the moving player into check
-        try:
-            chkInfo = inCheck(temp, player)
-        except(RecursionError):
-            return True
+
+        chkInfo = inCheck(temp, player)
+
         if (chkInfo[0] == 1):
             return True
         else:
             return False
-    except(AttributeError, RecursionError):
+    except(AttributeError):
         return True
 
 
 class pawn(piece):
     def __init__(self, player):
         self.player = player
-        self.value = 1
+
         self.type = "p"
         self.moveCount = 0
         self.string = " "
         self.twoMove = False
-        if (self.player == "Black"):
+        if (player == "Black"):
             self.string = "♙"
+            self.value = 1
+
         else:
             self.string = "♟"
+            self.value = 2
 
     def move(self, board, moveX, moveY):
         # setting up the booleans
@@ -594,14 +605,17 @@ class pawn(piece):
 class rook(piece):
     def __init__(self, player):
         self.player = player
-        self.value = 5
+
         self.type = "r"
         self.moveCount = 0
         self.string = " "
-        if (self.player == "Black"):
+        if (player == "Black"):
             self.string = "♖"
+            self.value=3
+
         else:
             self.string = "♜"
+            self.value=4
 
     def move(self, board, moveX, moveY):
         horizontalMovement = False
@@ -714,14 +728,15 @@ class rook(piece):
 class knight(piece):
     def __init__(self, player):
         self.player = player
-        self.value = 3
         self.type = "k"
         self.moveCount = 0
         self.string = " "
-        if (self.player == "Black"):
+        if (player== "Black"):
             self.string = "♘"
+            self.value=5
         else:
             self.string = "♞"
+            self.value=6
 
     def move(self, board, moveX, moveY):
         vertical = abs(abs(moveY) - abs(self.getY()))
@@ -741,7 +756,7 @@ class knight(piece):
         if (
                 horizontal == 2 and vertical == 1
                 or vertical == 2 and horizontal == 1
-                and not putOwnKingInCheck(board, self.getX(), self.getY(), moveX, moveY)
+                # and not putOwnKingInCheck(board, self.getX(), self.getY(), moveX, moveY)
 
                 # and attackingFriendlyPiece
         ):
@@ -754,14 +769,15 @@ class knight(piece):
 class bishop(piece):
     def __init__(self, player):
         self.player = player
-        self.value = 4
         self.type = "B"
         self.moveCount = 0
         self.string = " "
-        if (self.player == "Black"):
+        if (player == "Black"):
             self.string = "♗"
+            self.value=7
         else:
             self.string = "♝"
+            self.value=8
 
     def move(self, board, moveX, moveY):
         horizontalMovement = False
@@ -891,14 +907,16 @@ class bishop(piece):
 class queen(piece):
     def __init__(self, player):
         self.player = player
-        self.value = 7
+
         self.type = "Q"
         self.moveCount = 0
         self.string = " "
-        if (self.player == "Black"):
+        if (player == "Black"):
             self.string = "♕"
+            self.value=9
         else:
             self.string = "♛"
+            self.value=10
 
     def move(self, board, moveX, moveY):
         horizontalMovement = False
@@ -1074,15 +1092,17 @@ class king(piece):
     def __init__(self, player):
 
         self.player = player
-        self.value = 8
+
         self.type = "K"
         self.moveCount = 0
         self.string = " "
         if (self.player == "Black"):
             isBlackKing = True
             self.string = "♔"
+            self.value=11
         else:
             self.string = "♚"
+            self.value=12
 
     def move(self, board, moveX, moveY):
         bool = True
@@ -1100,23 +1120,15 @@ class king(piece):
         ):
             return False
 
-        for i in range(8):
-            for j in range(8):
-                if board[i][j] != " ":
-                    if (board[i][j].getType() == "K" and board[i][j].getPlayer() != self.getPlayer):
-                        kingX = j
-                        kingY = i
-
         if (board[moveY][moveX] != " "):
+            if (board[moveY][moveX].getType() == "K"):
+                return False
             # if player is trying to capture his own piece
             if (board[moveY][moveX].getPlayer() == self.getPlayer()) and board[moveY][moveX].getType() != "r":
                 bool = False
-                # player is trying to castle
+            # player is trying to castle
             elif (board[moveY][moveX].getPlayer() == self.getPlayer()) and board[moveY][moveX].getType() == "r":
                 castling = True
-        if (abs(moveY - kingY) == 1) or (abs(kingX - moveX) == 1):
-            return False
-
         if (moveGreaterThanOne and not castling):
             return False
         if (putOwnKingInCheck(board, self.getX(), self.getY(), moveX, moveY)):
@@ -1131,7 +1143,6 @@ class king(piece):
                         if ((board[i][j].getType() == "p") and (board[i][j].getPlayer() != self.getPlayer()) and
                                 board[i][j].attackMove(board, moveX, moveY)):
                             return False
-
                         if (board[i][j].getPlayer() != self.getPlayer()) and board[i][j].move(board, moveX, moveY) and \
                                 board[i][j].getType() != "p":
                             return False
@@ -1144,10 +1155,10 @@ class king(piece):
                        (3)There are pieces standing between your king and rook.
                        (4)The king is in check.
                        (5)The king moves through a square that is attacked by a piece of the opponent.
-
                        https://www.chessvariants.com/d.chess/castlefaq.html
                        '''
         if (castling and bool == True):
+
             # (1) and (2)✓
             if (board[moveY][moveX].getMoveCount() > 0 or board[self.getY()][self.getX()].getMoveCount() > 0):
                 return False
@@ -1159,6 +1170,7 @@ class king(piece):
             # (5)
 
             if (abs(self.getX() - moveX) == 3):
+
                 # (3)(5)✓
                 if (board[moveY][moveX - 1] != " "
                         or board[moveY][moveX - 2] != " "
@@ -1166,22 +1178,28 @@ class king(piece):
                         or canEnemyMove(board, self.getPlayer(), moveX - 2, moveY)
 
                 ):
-
                     return False
                 else:
+
                     return True
-            if (abs(self.getX() - moveX) == 4):
+            if(abs(self.getX() - moveX) == 4):
+               # print("444")
                 if (board[moveY][moveX + 1] != " "
                         or board[moveY][moveX + 2] != " "
-                        or board[moveY][moveX + 3] != " "
+                        or  board[moveY][moveX + 3] != " "
                         or canEnemyMove(board, self.getPlayer(), moveX + 1, moveY)
                         or canEnemyMove(board, self.getPlayer(), moveX + 2, moveY)
                         or canEnemyMove(board, self.getPlayer(), moveX + 3, moveY)
-                ):
 
+                ):
                     return False
                 else:
+
                     return True
+
+
+
+
 
         return bool
 
@@ -1203,6 +1221,7 @@ def printBoard(b):
                 if (switch):
                     switch = not switch
                     printstr = (Back.LIGHTWHITE_EX + " " + b[i][j].string + " ")
+                    b[i][j]
                 else:
                     switch = not switch
                     printstr = (Back.LIGHTBLACK_EX + " " + b[i][j].string + " ")
@@ -1885,6 +1904,8 @@ def checkMate(board, player, coordinates):
 
         kingY = kingCoords[0]
         kingX = kingCoords[1]
+        print(kingY)
+        print(kingX)
     else:
         kingY = kingCoords[2]
         kingX = kingCoords[3]
@@ -1947,12 +1968,18 @@ def convertInput(xInput, yInput):
 
 # helper function for InCheckMate and king.move() functions
 def canEnemyMove(board, player, x, y):
-    temp = copy.deepcopy(board)
+    # temp = copy.deepcopy(board)
     for i in range(8):
         for j in range(8):
             if (board[i][j] != " "):
-                if (board[i][j].getPlayer() != player) and board[i][j].move(board, x, y):
-                    return True
+                if (board[i][j].getPlayer() != player):
+                    if (board[i][j].type != "K"):
+                        # print("here")
+                        if (board[i][j].move(board, x,
+                                             y)):  # and board[i][j].move(board, x, y) and board[i][j].getType()!="K":
+                            print(board[i][j].toStr())
+                            print("can move there")
+                            return False
 
     return False
 
@@ -2249,10 +2276,10 @@ def twoAIGame():
         counter = 0
         if (wp.model_is_built):
             print("Loading saved model for White.... ")
-            #wp.model = load_model('AI_Chess_Model(3).h5')
+            # wp.model = load_model('AI_Chess_Model(3).h5')
         if (bp.model_is_built):
             print("Loading saved model for Black.... ")
-            #bp.model = load_model('AI_Chess_Model(5).h5')
+            # bp.model = load_model('AI_Chess_Model(5).h5')
 
         # print the info every 100 games
         if (numGames % 100 == 0):
@@ -2268,6 +2295,9 @@ def twoAIGame():
             print(whiteInCheck)
             print("Black put into check: ")
             print(blackInCheck)
+            # build the models
+            wp.buildModel()
+            bp.buildModel()
             blackInCheck = 0
             whiteInCheck = 0
         inCheckMate = False
@@ -2276,27 +2306,14 @@ def twoAIGame():
 
                 # train on a 50 move limit draw
                 if (counter > 49):
-                    # print("50 move limit reached! match is a draw!")
                     counter = 0
                     draw += 1
                     winner = "Draw"
-                    bp.buildModel()
-                    bp.model_is_built=True
-                    wp.buildModel()
-                    wp.model_is_built=True
-                    #bp.remember(board, mi, board2, reward, True)
-                    # delete the moves that resulted in a draw from memory
-                    while (True):
-                        try:
-                            bp.memory.popleft()
-                            wp.memory.popleft()
-                        except(IndexError):
-                            break
-
                     # reset the epsilon value to avoid learning plateau
                     wp.epsilon = epsilon
                     bp.epsilon = epsilon
                     print(winner)
+
                     break
                 counter += 1
 
@@ -2309,7 +2326,7 @@ def twoAIGame():
                 reward = getEvaluation(board2, wp.player, counter)
 
                 # store the previous state, move, current state, reward, and if white is in checkmate
-                wp.remember(board, mi, board2, reward, inCheckMate)
+                wp.remember(board, mi, board2, reward, inCheckMate, "")
                 # wp.replay(whiteWins)
                 # store the move list for adding to csv file
                 board = copy.deepcopy(board2)  # update the board
@@ -2323,6 +2340,7 @@ def twoAIGame():
                         whiteWins += 1
                         winner = "White"
                         inCheckMate = True
+
                         printBoard(board)
                         break
                     else:
@@ -2330,29 +2348,31 @@ def twoAIGame():
                         printBoard(board)
                         whiteInCheck += 1
 
-                        # print("Black is in Check")
-
-                    # printBoard(board)
-                # return a random legal move
                 temp = copy.deepcopy(board)
                 mi = bp.AImove(temp)
+                '''
                 if(wp.model_is_built):
                     print("------MAKING A PREDICTION-------")
                     temp2=copy.deepcopy(temp)
                     temp2=convert_to_binary_matrix(temp2,True)
                     printBoard(temp)
-                    temp2 = np.resize(temp2, ( 4, 64))
+                    temp2 = np.resize(temp2, ( -1, 4,64))
                     temp2 = np.array(temp2)
                     print(temp2)
-                    print(wp.model.predict(temp2))
-
+                    prediction=(wp.model.predict(temp2))
+                    print(prediction)
+                    prediction=wp.model.predict_classes(temp2)
+                    print(prediction)
+                    prediction=wp.model.predict_proba(prediction)
+                    print(prediction)
+                    '''
                 print(encoder(temp, mi))
                 # make the move
                 board2 = makeMove(temp, mi[0], mi[1], mi[2], mi[3])
                 reward = getEvaluation(board, bp.player, counter)
 
                 # store the previous state, move, current state, reward, and if black is in checkmate
-                bp.remember(board, mi, board2, reward, inCheckMate)
+                bp.remember(board, mi, board2, reward, inCheckMate, "")
 
                 board = copy.deepcopy(board2)
                 # printBoard(board)
@@ -2368,6 +2388,7 @@ def twoAIGame():
                         blackWins += 1
                         winner = "Black"
                         inCheckMate = True
+
                         printBoard(board)
                         break
                     else:
@@ -2383,9 +2404,9 @@ def twoAIGame():
                 wp.learningRate += 0.01
                 bp.learningRate += 0.01
                 if (winner == "Black"):
-                    bp.remember(board, mi, board2, reward, inCheckMate)
+                    bp.remember(board, mi, board2, reward, inCheckMate, "Black")
                 else:
-                    wp.remember(board, mi, board2, reward, inCheckMate)
+                    wp.remember(board, mi, board2, reward, inCheckMate, "White")
 
 
 
@@ -2406,6 +2427,8 @@ def twoAIGame():
     print(whiteInCheck)
     print("Black put into check: ")
     print(blackInCheck)
+    wp.buildModel()
+    bp.buildModel()
     return True
 
 
@@ -2580,6 +2603,7 @@ class driver():
 
     print("Is this game an AI game for data collection or training? ")
     print("y for yes, t for train or any other key for no.")
+    print(("{0:{fill}5b}".format(9, fill='0')))
     ai = input()
     test = False
     if (ai == "y"):
