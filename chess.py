@@ -1,5 +1,5 @@
 import array
-
+import time
 import random
 import sys
 import pandas as pd
@@ -44,6 +44,7 @@ class DQNNPlayer(object):
         self.learningRate = learningRate  # how much the NN learns after each exploration
         self.player = player
         self.moveCount = 0
+        self.error_count=0
         # d = deque()
         self.memory = deque(maxlen=500000)
         self.model = ""
@@ -141,103 +142,163 @@ class DQNNPlayer(object):
         self.model_is_built = True
         print("saving model to disk")
         if (self.player == "White"):
-            self.model.save_weights('AI_Chess_Model(4).h5', True)
+            self.model.save('White_AI_Model.h5', True)
         else:
-            self.model.save_weights('AI_Chess_Model(5).h5', True)
+            self.model.save('Black_AI_Model.h5', True)
 
     def AImove(self, boardState):
-        # get the list of moves
-        listOfMoves = getAvailableMoves(boardState, self.player)
 
-        # if np.random.rand()<=self.epsilon:      #first give the opportunity for a random move.
-        self.moveCount += 1
-        # self.epsilon *= self.epsilonDecay
-        print(self.player + " making random move")
-        return random.choice(listOfMoves)
+        # if np.random.rand() <= self.epsilon:
+        print("------MAKING A PREDICTION FOR " + self.player + " +-------")
+        temp2 = copy.deepcopy(boardState)
+        temp2 = convert_to_binary_matrix(temp2, True)
+        temp2 = np.resize(temp2, (1, 4, 64))
+        temp2 = np.array(temp2)
 
-        '''
-        #else:
+        #print(temp2)
+        prediction = (self.model.predict(temp2))
+        #print("raw data:")
+        #print(prediction)
+        #print("")
+        prediction=prediction.tolist()
 
-        # transform the list of moves to a list of encoded string moves
-            encodedListOfMoves = getAvailableMovesEncoded(boardState, self.player)
 
-            # transform the string encoding into one_hot_binary encoding
-            encodedListOfMoves = array(encodedListOfMoves)
+        intStr = ""
+        # round the decimal numbers to binary
+        for i in range(16):
+            if ((prediction[0][i]) >= 0.01):
+                prediction[0][i] = 1
+            else:
+                prediction[0][i] = 0
+        #print(prediction)
 
-            label_encoder = LabelEncoder()
-            integer_encoded = label_encoder.fit_transform(encodedListOfMoves)
+        #convert the binary vector to a move list
+        move = []
+        s=''
+        for j in range(16):
+            if(j%4!=0):
+                s += (str(prediction[0][j]))
+            if(j%4==0 and j!=0 or j==15):
+                move.append(int(s, 2))
+                #print(move)
+                s=""
+        try:
+            if(boardState[move[1]][move[0]].move(boardState, move[2],move[3])):
+                return move
+            else:
+                self.error_count += 1
+                move= randomAImove(boardState, self.player)
+                return move
 
-            # encode integer to binary
-            onehot_encoded = OneHotEncoder(sparse=False)
-            integer_encoded = integer_encoded.reshape(len(integer_encoded), 1)
-            onehot_encoded = onehot_encoded.fit_transform(integer_encoded)
-
-            # invert back to string encoding
-            inverted = label_encoder.inverse_transform([argmax(onehot_encoded[0, :])])
-            inverted = decoder(inverted)
-            print(self.player + " made a decision!!!!!------------------")
-            self.moveCount += 1
-            return inverted        #best move is a placeholder for the predicted best move
-            '''
+        except(AttributeError):
+            self.error_count+=1
+            move = randomAImove(boardState, self.player)
+            return move
 
     def remember(self, state, action, next_state, reward, gameComplete, winningPlayer):
         from keras.models import load_model
 
         action = convert_to_binary_matrix(action, False)
         state = convert_to_binary_matrix(state, True)
-        next_board_state_encoded = one_hot_encoder(next_state, True)
-
+       # next_board_state_encoded = one_hot_encoder(next_state, True)
+        self.memory.append((state, action))
         if (gameComplete and winningPlayer == self.player):
             print("put game info into memory")
-            self.memory.append((state, action))
 
-            # if (self.player == "White"):
-            # self.model.save_weights('AI_Chess_Model(3).h5', True)
-            # else:
-            # self.model.save_weights('AI_Chess_Model(5).h5', True)
-            # self.model_is_built = True
 
-    # del self.model
 
+
+
+
+
+
+
+        # get the list of moves
+'''
+    listOfMoves = getAvailableMoves(boardState, self.player)
+
+    # if np.random.rand()<=self.epsilon:      #first give the opportunity for a random move.
+    self.moveCount += 1
+    # self.epsilon *= self.epsilonDecay
+    print(self.player + " making random move")
+    return random.choice(listOfMoves)
+'''
+'''
+    #else:
+
+    # transform the list of moves to a list of encoded string moves
+        encodedListOfMoves = getAvailableMovesEncoded(boardState, self.player)
+
+        # transform the string encoding into one_hot_binary encoding
+        encodedListOfMoves = array(encodedListOfMoves)
+
+        label_encoder = LabelEncoder()
+        integer_encoded = label_encoder.fit_transform(encodedListOfMoves)
+
+        # encode integer to binary
+        onehot_encoded = OneHotEncoder(sparse=False)
+        integer_encoded = integer_encoded.reshape(len(integer_encoded), 1)
+        onehot_encoded = onehot_encoded.fit_transform(integer_encoded)
+
+        # invert back to string encoding
+        inverted = label_encoder.inverse_transform([argmax(onehot_encoded[0, :])])
+        inverted = decoder(inverted)
+        print(self.player + " made a decision!!!!!------------------")
+        self.moveCount += 1
+        return inverted        #best move is a placeholder for the predicted best move
+'''
+
+
+
+
+        # if (self.player == "White"):
+        # self.model.save_weights('AI_Chess_Model(3).h5', True)
+        # else:
+        # self.model.save_weights('AI_Chess_Model(5).h5', True)
+        # self.model_is_built = True
+
+
+# del self.model
+
+'''
+ s = "y"
+ if (self.player == "White"):
+     print("writing to white")
+     # serialize model to JSON
+     model_json = self.model.to_json()
+     with open("AI_Training_Data.json", "w") as json_file:
+         json_file.write(model_json)
+     # serialize weights to HDF5
+     self.model.save_weights("AI_Chess_Model(1).h5")
+     print("Saved model to disk")
+     break
+ else:
+     print("writing to black")
+     model_json = self.model.to_json()
+     with open("AI_Training_Data.json", "w") as json_file:
+         json_file.write(model_json)
+     # serialize weights to HDF5
+         self.model.save_weights("AI_Chess_Model(2).h5")
+     print("Saved model to disk")
+     break
+except(FileNotFoundError):
+ print("File does not exist, try again.")
+ '''
+
+'''
+def replay(self, batch_size):
+    minibatch = random.sample(self.memory, batch_size)
+    for state, action, reward, next_state, done in minibatch:
+        target = reward
+
+if not done:
+    target = reward + self.gamma * np.amax(self.model.predict(next_state)[0])
+    target_f = self.model.predict(state)
+    target_f[0][action] = target
+    self.model.fit(state, target_f, epochs=1, verbose=0)
+if (self.epsilon > self.epsilonMin):
+    self.epsilon *= self.epsilonDecay
     '''
-     s = "y"
-     if (self.player == "White"):
-         print("writing to white")
-         # serialize model to JSON
-         model_json = self.model.to_json()
-         with open("AI_Training_Data.json", "w") as json_file:
-             json_file.write(model_json)
-         # serialize weights to HDF5
-         self.model.save_weights("AI_Chess_Model(1).h5")
-         print("Saved model to disk")
-         break
-     else:
-         print("writing to black")
-         model_json = self.model.to_json()
-         with open("AI_Training_Data.json", "w") as json_file:
-             json_file.write(model_json)
-         # serialize weights to HDF5
-             self.model.save_weights("AI_Chess_Model(2).h5")
-         print("Saved model to disk")
-         break
- except(FileNotFoundError):
-     print("File does not exist, try again.")
-     '''
-
-    '''
-    def replay(self, batch_size):
-        minibatch = random.sample(self.memory, batch_size)
-        for state, action, reward, next_state, done in minibatch:
-            target = reward
-
-    if not done:
-        target = reward + self.gamma * np.amax(self.model.predict(next_state)[0])
-        target_f = self.model.predict(state)
-        target_f[0][action] = target
-        self.model.fit(state, target_f, epochs=1, verbose=0)
-    if (self.epsilon > self.epsilonMin):
-        self.epsilon *= self.epsilonDecay
-        '''
 
 
 def convert_to_binary_matrix(to_encode, is_game_board):
@@ -611,11 +672,11 @@ class rook(piece):
         self.string = " "
         if (player == "Black"):
             self.string = "♖"
-            self.value=3
+            self.value = 3
 
         else:
             self.string = "♜"
-            self.value=4
+            self.value = 4
 
     def move(self, board, moveX, moveY):
         horizontalMovement = False
@@ -731,12 +792,12 @@ class knight(piece):
         self.type = "k"
         self.moveCount = 0
         self.string = " "
-        if (player== "Black"):
+        if (player == "Black"):
             self.string = "♘"
-            self.value=5
+            self.value = 5
         else:
             self.string = "♞"
-            self.value=6
+            self.value = 6
 
     def move(self, board, moveX, moveY):
         vertical = abs(abs(moveY) - abs(self.getY()))
@@ -774,10 +835,10 @@ class bishop(piece):
         self.string = " "
         if (player == "Black"):
             self.string = "♗"
-            self.value=7
+            self.value = 7
         else:
             self.string = "♝"
-            self.value=8
+            self.value = 8
 
     def move(self, board, moveX, moveY):
         horizontalMovement = False
@@ -913,10 +974,10 @@ class queen(piece):
         self.string = " "
         if (player == "Black"):
             self.string = "♕"
-            self.value=9
+            self.value = 9
         else:
             self.string = "♛"
-            self.value=10
+            self.value = 10
 
     def move(self, board, moveX, moveY):
         horizontalMovement = False
@@ -1099,10 +1160,10 @@ class king(piece):
         if (self.player == "Black"):
             isBlackKing = True
             self.string = "♔"
-            self.value=11
+            self.value = 11
         else:
             self.string = "♚"
-            self.value=12
+            self.value = 12
 
     def move(self, board, moveX, moveY):
         bool = True
@@ -1182,11 +1243,11 @@ class king(piece):
                 else:
 
                     return True
-            if(abs(self.getX() - moveX) == 4):
-               # print("444")
+            if (abs(self.getX() - moveX) == 4):
+                # print("444")
                 if (board[moveY][moveX + 1] != " "
                         or board[moveY][moveX + 2] != " "
-                        or  board[moveY][moveX + 3] != " "
+                        or board[moveY][moveX + 3] != " "
                         or canEnemyMove(board, self.getPlayer(), moveX + 1, moveY)
                         or canEnemyMove(board, self.getPlayer(), moveX + 2, moveY)
                         or canEnemyMove(board, self.getPlayer(), moveX + 3, moveY)
@@ -1196,10 +1257,6 @@ class king(piece):
                 else:
 
                     return True
-
-
-
-
 
         return bool
 
@@ -2057,11 +2114,14 @@ def decoder(moveStr):
 # encode a move to figuirine algebraic
 def encoder(board, availableMove):
     encodedStr = ""
-    xPos = availableMove[0]
-    yPos = availableMove[1]
-    moveX = availableMove[2]
-    moveY = availableMove[3]
-    player = board[yPos][xPos].getPlayer()
+    xPos = int(availableMove[0])
+    yPos = int(availableMove[1])
+    moveX = int(availableMove[2])
+    moveY = int(availableMove[3])
+    try:
+        player = board[yPos][xPos].getPlayer()
+    except(AttributeError):
+        return False
     if (player == "White"):
         enemyPlayer = "Black"
         inCheckInfo = inCheck(board, enemyPlayer)
@@ -2252,7 +2312,7 @@ def twoAIGame():
 
     # wp.buildModel()
     # bp.buildModel()
-
+    max_num_moves=45
     numGames = 0
     whiteWins = 0
     blackWins = 0
@@ -2264,6 +2324,11 @@ def twoAIGame():
     inCheckMate = False
     # board = newGame()
     print("Training....")
+    print("Loading saved model for White.... ")
+    wp.model = load_model('White_AI_Model.h5')
+    # if (bp.model_is_built):
+    print("Loading saved model for Black.... ")
+    bp.model = load_model('Black_AI_Model.h5')
     while (numGames < 1000):
         wp.epsilonDecay -= 0.0001
         bp.epsilonDecay -= 0.0001
@@ -2274,15 +2339,9 @@ def twoAIGame():
         recordMoves.clear()
 
         counter = 0
-        if (wp.model_is_built):
-            print("Loading saved model for White.... ")
-            # wp.model = load_model('AI_Chess_Model(3).h5')
-        if (bp.model_is_built):
-            print("Loading saved model for Black.... ")
-            # bp.model = load_model('AI_Chess_Model(5).h5')
-
+        # if (wp.model_is_built):
         # print the info every 100 games
-        if (numGames % 100 == 0):
+        if (numGames % 500 == 0):
             print("Number of games played: ")
             print(numGames)
             print("Wins for White: ")
@@ -2295,44 +2354,69 @@ def twoAIGame():
             print(whiteInCheck)
             print("Black put into check: ")
             print(blackInCheck)
+            print("Black moveError count: ")
+            print(bp.error_count)
+            print("White moveError count: ")
+            print(wp.error_count)
             # build the models
+            if(max_num_moves>25):
+                max_num_moves-=1
+
+            #build and update the models
             wp.buildModel()
             bp.buildModel()
+            print("Loading saved model for White.... ")
+            wp.model = load_model('White_AI_Model.h5')
+            # if (bp.model_is_built):
+            print("Loading saved model for Black.... ")
+            bp.model = load_model('Black_AI_Model.h5')
             blackInCheck = 0
             whiteInCheck = 0
+
         inCheckMate = False
         try:
             while (not inCheckMate):
 
                 # train on a 50 move limit draw
-                if (counter > 49):
+                if (counter > max_num_moves):
                     counter = 0
                     draw += 1
                     winner = "Draw"
+                    print(winner+" number of moves")
+                    print(max_num_moves)
+                    print("clearing memory that resulted in a draw")
+                    time.sleep(5)
+                    for i in range(int(max_num_moves/2)):#
+                        wp.memory.popleft()
+                        bp.memory.popleft()
+                    #if the number of moves made is odd, wp has made 1 more move than black
+                    if(max_num_moves%2==0):
+                        wp.memory.popleft()
+                    break#go to the outer loop
                     # reset the epsilon value to avoid learning plateau
-                    wp.epsilon = epsilon
-                    bp.epsilon = epsilon
-                    print(winner)
+                    #wp.epsilon = epsilon
+                    #bp.epsilon = epsilon
 
-                    break
                 counter += 1
-
+                reward = 0
                 temp = copy.deepcopy(board)
-                # return a  random legal move
-                mi = wp.AImove(temp)
-                print(encoder(temp, mi))
-                # make the move
-                board2 = makeMove(temp, mi[0], mi[1], mi[2], mi[3])  # update the board
-                reward = getEvaluation(board2, wp.player, counter)
 
+                try:
+                    # try to return a move based on model, if move is not legal, return a random move
+                    mi = wp.AImove(temp)
+                    print(encoder(temp, mi))
+                    board2 = makeMove(temp, mi[0], mi[1], mi[2], mi[3])  # update the board
+                    printBoard(board2)
+                except(RecursionError):
+                    break
                 # store the previous state, move, current state, reward, and if white is in checkmate
-                wp.remember(board, mi, board2, reward, inCheckMate, "")
-                # wp.replay(whiteWins)
-                # store the move list for adding to csv file
+                wp.remember(board, mi, board2, 0, inCheckMate, "")
+
                 board = copy.deepcopy(board2)  # update the board
-                # printBoard(board)
-                # see if black is in check
-                inCheckInfo = inCheck(board, "Black")
+                try:
+                    inCheckInfo = inCheck(board, "Black")
+                except(RecursionError):
+                    break
                 # see if black is in checkmate
                 if (inCheckInfo[0] == 1):
                     if (checkMate(board, "Black", inCheckInfo)):
@@ -2349,38 +2433,26 @@ def twoAIGame():
                         whiteInCheck += 1
 
                 temp = copy.deepcopy(board)
-                mi = bp.AImove(temp)
-                '''
-                if(wp.model_is_built):
-                    print("------MAKING A PREDICTION-------")
-                    temp2=copy.deepcopy(temp)
-                    temp2=convert_to_binary_matrix(temp2,True)
-                    printBoard(temp)
-                    temp2 = np.resize(temp2, ( -1, 4,64))
-                    temp2 = np.array(temp2)
-                    print(temp2)
-                    prediction=(wp.model.predict(temp2))
-                    print(prediction)
-                    prediction=wp.model.predict_classes(temp2)
-                    print(prediction)
-                    prediction=wp.model.predict_proba(prediction)
-                    print(prediction)
-                    '''
-                print(encoder(temp, mi))
-                # make the move
-                board2 = makeMove(temp, mi[0], mi[1], mi[2], mi[3])
-                reward = getEvaluation(board, bp.player, counter)
-
+                try:
+                    # try to return a move based on model, if move is not legal, return a random move
+                    mi = bp.AImove(temp)
+                    print(encoder(temp, mi)) #print the algebraic notation encoded move
+                    board2 = makeMove(temp, mi[0], mi[1], mi[2], mi[3])#update the board
+                    printBoard(board2)#print the board
+                except(RecursionError):
+                    break
+                # reward = getEvaluation(board, bp.player, counter)
                 # store the previous state, move, current state, reward, and if black is in checkmate
-                bp.remember(board, mi, board2, reward, inCheckMate, "")
-
+                bp.remember(board, mi, board2, 0, inCheckMate, "")
                 board = copy.deepcopy(board2)
                 # printBoard(board)
-
                 # store the movelist for adding to csv file
                 recordMoves.extend(mi)
                 # see if white is in check
-                inCheckInfo = inCheck(board, "White")
+                try:
+                    inCheckInfo = inCheck(board, "White")
+                except(RecursionError):
+                    break
                 # see if white is in checkMate
                 if (inCheckInfo[0] == 1):
                     if (checkMate(board, "White", inCheckInfo)):
@@ -2405,8 +2477,10 @@ def twoAIGame():
                 bp.learningRate += 0.01
                 if (winner == "Black"):
                     bp.remember(board, mi, board2, reward, inCheckMate, "Black")
+                   # bp.buildModel()
                 else:
                     wp.remember(board, mi, board2, reward, inCheckMate, "White")
+                    #wp.buildModel()
 
 
 
@@ -2503,7 +2577,7 @@ def tester():
                     draw += 1
                     winner = "Draw"
                     print(winner)
-                    break;
+                    break
                 counter += 1
 
                 # return a  random legal move
@@ -2512,7 +2586,7 @@ def tester():
                 board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3])  # update the board
                 reward = getEvaluation(board, wp.player, counter)
 
-                # wp.remember(board, mi, reward, board2, inCheckMate)
+                wp.remember(board, mi, reward, board2, inCheckMate)
                 # store the move list for adding to csv file
                 recordMoves.extend(mi)
                 # see if black is in check
@@ -2536,7 +2610,7 @@ def tester():
                 # make the move
                 board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3])
                 # reward = getEvaluation(board, bp.player, counter)
-                # bp.remember(board, mi, reward, board2, inCheckMate)
+                bp.remember(board, mi, reward, board2, inCheckMate)
                 # store the movelist for adding to csv file
                 recordMoves.extend(mi)
                 # see if white is in check
@@ -2603,7 +2677,7 @@ class driver():
 
     print("Is this game an AI game for data collection or training? ")
     print("y for yes, t for train or any other key for no.")
-    print(("{0:{fill}5b}".format(9, fill='0')))
+
     ai = input()
     test = False
     if (ai == "y"):
