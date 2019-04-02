@@ -1,13 +1,19 @@
+from tensorflow.python.client import device_lib
+
+print(device_lib.list_local_devices())
 import array
 import time
 import random
 import sys
 import pandas as pd
 import numpy as np
+
+import tensorflow as tf
+
 from numpy import argmax
 from numpy import array
 from collections import deque
-from keras.preprocessing import sequence
+
 from keras.models import Sequential
 from keras.layers import Dense, Embedding, Flatten
 from keras.layers import Dense, Dropout, LSTM, \
@@ -23,6 +29,8 @@ import keras
 from llist import dllist, dllistnode
 import openpyxl
 import csv
+
+sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
 
 from colorama import Fore, Back, Style
 import copy
@@ -44,7 +52,7 @@ class DQNNPlayer(object):
         self.learningRate = learningRate  # how much the NN learns after each exploration
         self.player = player
         self.moveCount = 0
-        self.error_count=0
+        self.error_count = 0
         # d = deque()
         self.memory = deque(maxlen=500000)
         self.model = ""
@@ -147,21 +155,23 @@ class DQNNPlayer(object):
             self.model.save('Black_AI_Model.h5', True)
 
     def AImove(self, boardState):
+        # give opportunity for random move first
+        #
 
-        # if np.random.rand() <= self.epsilon:
+        if np.random.rand() <= self.epsilon:
+            return randomAImove(boardState, self.player)
         print("------MAKING A PREDICTION FOR " + self.player + " +-------")
         temp2 = copy.deepcopy(boardState)
         temp2 = convert_to_binary_matrix(temp2, True)
         temp2 = np.resize(temp2, (1, 4, 64))
         temp2 = np.array(temp2)
 
-        #print(temp2)
+        # print(temp2)
         prediction = (self.model.predict(temp2))
-        #print("raw data:")
-        #print(prediction)
-        #print("")
-        prediction=prediction.tolist()
-
+        # print("raw data:")
+        # print(prediction)
+        # print("")
+        prediction = prediction.tolist()
 
         intStr = ""
         # round the decimal numbers to binary
@@ -170,28 +180,29 @@ class DQNNPlayer(object):
                 prediction[0][i] = 1
             else:
                 prediction[0][i] = 0
-        #print(prediction)
+        # print(prediction)
 
-        #convert the binary vector to a move list
+        # convert the binary vector to a move list
         move = []
-        s=''
+        s = ''
         for j in range(16):
-            if(j%4!=0):
+            if (j % 4 != 0):
                 s += (str(prediction[0][j]))
-            if(j%4==0 and j!=0 or j==15):
+            if (j % 4 == 0 and j != 0 or j == 15):
                 move.append(int(s, 2))
-                #print(move)
-                s=""
+                # print(move)
+                s = ""
         try:
-            if(boardState[move[1]][move[0]].move(boardState, move[2],move[3])):
+            if (boardState[move[1]][move[0]].move(boardState, move[2], move[3])):
+                print("we made a good move!")
                 return move
             else:
                 self.error_count += 1
-                move= randomAImove(boardState, self.player)
+                move = randomAImove(boardState, self.player)
                 return move
 
         except(AttributeError):
-            self.error_count+=1
+            self.error_count += 1
             move = randomAImove(boardState, self.player)
             return move
 
@@ -200,20 +211,156 @@ class DQNNPlayer(object):
 
         action = convert_to_binary_matrix(action, False)
         state = convert_to_binary_matrix(state, True)
-       # next_board_state_encoded = one_hot_encoder(next_state, True)
+        # next_board_state_encoded = one_hot_encoder(next_state, True)
         self.memory.append((state, action))
         if (gameComplete and winningPlayer == self.player):
             print("put game info into memory")
 
-
-
-
-
-
-
-
-
         # get the list of moves
+
+
+class minimax_tree(object):
+    def __init__(self, minimax_player, board, height):
+        self.height = height
+        if (minimax_player.player == "White"):
+            self.player = "White"
+            self.enemy_player = "Black"
+        else:
+            self.player = "Black"
+            self.enemy_player = "White"
+
+    def construct_tree(self, board):
+        depth = 0
+        value = 0
+        root_node: tree_node = tree_node(minimax_player, board, depth, value,None, None)
+        # move_list = getAvailableMoves(board,self.player)
+        # move_stack=self.move_stack(board, move_list)
+        node_queue = []
+
+        node_queue.append(root_node)
+        evaluating_enemy_player = False
+        for depth in range(self.height):
+            root_node = inOrderTraversal(root_node)
+            for num_children in range(2 ** depth):
+                if (not evaluating_enemy_player):
+                    move_list = getAvailableMoves(board, self.player)
+                    move_stack = self.move_stack(board, move_list)
+                else:
+                    move_list = getAvailableMoves(board, self.enemy_player)
+                    move_stack = self.move_stack(board, move_list)
+                tempboard = copy.deepcopy(board)
+
+                move = move_stack.pop()
+                tempboard = makeMove(tempboard, move[0], move[1], move[2], move[3])
+                TN: tree_node = tree_node(minimax_player, board, depth, minimax_player.heuristic(board), move, root_node)
+
+                root_node.left_child = tree_node
+
+                move = move_stack.pop()
+                tempboard = makeMove(tempboard, move[0], move[1], move[2], move[3])
+                TN: tree_node = tree_node(minimax_player, board, depth, minimax_player.heuristic(board),move, root_node)
+
+                root_node.right_child = tree_node
+
+                node_queue.append(TN)
+            evaluating_enemy_player = not evaluating_enemy_player
+        while(root_node.parent!=None):
+            root_node=root_node.parent
+
+        return root_node
+
+    # return the parent node that does not have "filled" children
+    def inOrderTraversal(self, node):
+        if (node.left_child == None or node.right_child == None):
+            return node
+            inOrderTraversal(node.left_child)
+            inOrderTraversal(node.right_child)
+    def leftSummation(self, leftChild):
+        summation+=leftChild.node_value
+        if (leftChild.left_child == None or leftChild.right_child == None):
+            return summation
+        leftSummation(node.left_child)
+        leftSummation(node.right_child)
+    def rightSummation(self, rightChild):
+        summation+=rightChild.node_value
+        if (rightChild.left_child == None or rightChild.right_child == None):
+            return summation
+        rightSummation(rightChild.left_child)
+        rightSummation(rightChild.right_child)
+
+
+    # initially takes in root.left as the source node
+
+
+        # find the 3 best moves that the player can make
+
+    def move_stack(self, board, move_list):
+        len = len(move_list)
+        move_stack = []
+        best_move = 0
+        move_eval = 0
+        for i in range(len):
+            temp_board = copy.deepcopy(board)
+            temp_board = makeMove(temp_board, move_list[i][0], move_list[i][1], move_list[i][2], move_list[i][3])
+            move_eval = minimax_player.heuristic(temp_board)
+            if (move_eval > best_move):
+                best_move = move_eval
+                move_stack.append(move_list[i])
+        return move_stack
+
+
+# node is an object that holds the associated value a move in a minimax tree
+class tree_node(object):
+    def __init__(self, minimax_player, board, depth, value, move, parent):
+        self.node_value = value
+        self.depth = depth
+        self.move = move
+        self.board = None
+        self.parent = None
+        self.left_child = None
+        self.right_child = None
+
+
+class minimax_player(object):
+    def __init__(self, player, depth):
+        self.player = player
+        self.depth = depth
+
+    def heuristic(self, board):
+        playerSum = 0
+        enemySum = 0
+        calculatedVal = 0
+        for i in range(8):
+            for j in range(8):
+                if (board[i][j] != ""):
+                    if (board[i][j] == self.player):
+                        playerSum += board[i][j].encodedVal
+                    else:
+                        enemySum += board[i][j].encodedVal
+        inCheckInfo = inCheck(board, "Black")
+        # black is in check
+        if (inCheckInfo[0] == 1 and self.player == "Black" and inCheck(board, "Black")):
+            calculatedVal = -999999
+        if (inCheckInfo[0] == 1 and self.player == "White"):
+            calculatedVal = 999999
+        # if white is in check
+        inCheckInfo = inCheck(board, "White")
+        if (inCheckInfo[0] == 1 and self.player == "White"):
+            calculatedVal = -999999
+        if (inCheckInfo[0] == 1 and self.player == "Black"):
+            calculatedVal = 999999
+        else:
+            calculatedVal = (playerSum - enemySum)
+
+        return calculatedVal
+
+    def minimax_move(self, root):
+        if(self.leftSummation(root.left_child)>self.rightSummation(root.right_child)):
+            return root.left_child.move
+        else:
+            return root.right_child.move
+
+
 '''
     listOfMoves = getAvailableMoves(boardState, self.player)
 
@@ -248,14 +395,11 @@ class DQNNPlayer(object):
         return inverted        #best move is a placeholder for the predicted best move
 '''
 
-
-
-
-        # if (self.player == "White"):
-        # self.model.save_weights('AI_Chess_Model(3).h5', True)
-        # else:
-        # self.model.save_weights('AI_Chess_Model(5).h5', True)
-        # self.model_is_built = True
+# if (self.player == "White"):
+# self.model.save_weights('AI_Chess_Model(3).h5', True)
+# else:
+# self.model.save_weights('AI_Chess_Model(5).h5', True)
+# self.model_is_built = True
 
 
 # del self.model
@@ -310,7 +454,8 @@ def convert_to_binary_matrix(to_encode, is_game_board):
             for j in range(8):
                 if (to_encode[i][j] != " "):
                     # convert the integer value of each piece to 4 bit binary
-                    int_str += (("{0:{fill}4b}".format(to_encode[i][j].value, fill='0')))
+
+                    int_str += (("{0:{fill}4b}".format(to_encode[i][j].getEncodedVal(), fill='0')))
                 else:
                     # spot is empty, give value zero
                     int_str += (("{0:{fill}4b}".format(0, fill='0')))
@@ -369,7 +514,7 @@ class piece(object):
     def __init__(self, player):
         self.player = player
         self.moveCount = 0
-        self.encodedVal = 0
+        # self.encodedVal = 0
 
     def getEncodedVal(self):
         return self.encodedVal
@@ -458,16 +603,19 @@ class pawn(piece):
         self.type = "p"
         self.moveCount = 0
         self.string = " "
+        self.value = 1
         self.twoMove = False
         if (player == "Black"):
             self.string = "♙"
-            self.value = 1
+            self.encodedVal = 1
 
         else:
             self.string = "♟"
-            self.value = 2
+            self.encodedVal = 2
 
     def move(self, board, moveX, moveY):
+        if (moveY == self.getY() and moveX == self.getX()):
+            return False
         # setting up the booleans
         horizontalMovement = False
         verticalMovement = False
@@ -670,15 +818,18 @@ class rook(piece):
         self.type = "r"
         self.moveCount = 0
         self.string = " "
+        self.value = 5
         if (player == "Black"):
             self.string = "♖"
-            self.value = 3
+            self.encodedVal = 3
 
         else:
             self.string = "♜"
-            self.value = 4
+            self.encodedVal = 4
 
     def move(self, board, moveX, moveY):
+        if (moveY == self.getY() and moveX == self.getX()):
+            return False
         horizontalMovement = False
         verticalMovement = False
         pieceInMoveSpot = False
@@ -792,14 +943,17 @@ class knight(piece):
         self.type = "k"
         self.moveCount = 0
         self.string = " "
+        self.encodedVal = 4
         if (player == "Black"):
             self.string = "♘"
-            self.value = 5
+            self.encodedVal = 5
         else:
             self.string = "♞"
-            self.value = 6
+            self.encodedVal = 6
 
     def move(self, board, moveX, moveY):
+        if (moveY == self.getY() and moveX == self.getX()):
+            return False
         vertical = abs(abs(moveY) - abs(self.getY()))
         horizontal = abs(abs(moveX) - abs(self.getX()))
         notValidMove = False
@@ -833,14 +987,17 @@ class bishop(piece):
         self.type = "B"
         self.moveCount = 0
         self.string = " "
+        self.value = 5
         if (player == "Black"):
             self.string = "♗"
-            self.value = 7
+            self.encodedVal = 7
         else:
             self.string = "♝"
-            self.value = 8
+            self.encodedVal = 8
 
     def move(self, board, moveX, moveY):
+        if (moveY == self.getY() and moveX == self.getX()):
+            return False
         horizontalMovement = False
         verticalMovement = False
         pieceInMoveSpot = False
@@ -972,14 +1129,19 @@ class queen(piece):
         self.type = "Q"
         self.moveCount = 0
         self.string = " "
+        self.value = 10
         if (player == "Black"):
             self.string = "♕"
-            self.value = 9
+            self.encodedVal = 9
         else:
             self.string = "♛"
-            self.value = 10
+            self.encodedVal = 10
 
     def move(self, board, moveX, moveY):
+        if (moveY == self.getY() and moveX == self.getX()):
+            return False
+        if (moveY == self.getY() and moveX == self.getX()):
+            return False
         horizontalMovement = False
         verticalMovement = False
         pieceInMoveSpot = False
@@ -1156,17 +1318,19 @@ class king(piece):
 
         self.type = "K"
         self.moveCount = 0
-        self.string = " "
+        self.value = 10000
+
         if (self.player == "Black"):
             isBlackKing = True
             self.string = "♔"
-            self.value = 11
+            self.encodedVal = 11
         else:
             self.string = "♚"
-            self.value = 12
+            self.encodedVal = 12
 
     def move(self, board, moveX, moveY):
-        bool = True
+        if (moveY == self.getY() and moveX == self.getX()):
+            return False
         castling = False
         moveGreaterThanOne = False
         if (abs(self.getX() - moveX) > 1
@@ -1186,14 +1350,19 @@ class king(piece):
                 return False
             # if player is trying to capture his own piece
             if (board[moveY][moveX].getPlayer() == self.getPlayer()) and board[moveY][moveX].getType() != "r":
-                bool = False
+                return False
             # player is trying to castle
             elif (board[moveY][moveX].getPlayer() == self.getPlayer()) and board[moveY][moveX].getType() == "r":
                 castling = True
         if (moveGreaterThanOne and not castling):
             return False
-        if (putOwnKingInCheck(board, self.getX(), self.getY(), moveX, moveY)):
+        tempBoard = copy.deepcopy(board)
+        tempBoard = makeMove(tempBoard, self.getX(), self.getY(), moveX, moveY)
+        inCheckInfo = inCheck(tempBoard, self.getPlayer())
+
+        if (inCheckInfo[0] == 1):
             return False
+        #   return False
 
         '''
         # will the king be put into check after it makes the move?
@@ -1218,7 +1387,7 @@ class king(piece):
                        (5)The king moves through a square that is attacked by a piece of the opponent.
                        https://www.chessvariants.com/d.chess/castlefaq.html
                        '''
-        if (castling and bool == True):
+        if (castling):
 
             # (1) and (2)✓
             if (board[moveY][moveX].getMoveCount() > 0 or board[self.getY()][self.getX()].getMoveCount() > 0):
@@ -1258,7 +1427,7 @@ class king(piece):
 
                     return True
 
-        return bool
+        return True
 
 
 def printBoard(b):
@@ -1410,7 +1579,7 @@ def newGame():  #
                 b[i][j].setY(i)
 
                 # encode the pieces relative to their string and initial position
-                b[i][j].encodedVal = str.encode(b[i][j].toStr()) + str.encode(str(i)) + str.encode(str(j))
+                # b[i][j].encodedVal = str.encode(b[i][j].toStr()) + str.encode(str(i)) + str.encode(str(j))
 
     return b
 
@@ -1826,30 +1995,7 @@ def makeMove(board, xPos, yPos, moveX, moveY):
         if (enPassant(board, xPos, yPos, moveX, moveY)):
             return makeEnPassant(board, xPos, yPos, moveX, moveY)
 
-    legalMove = board[yPos][xPos].move(board, moveX, moveY)
     castling = False
-
-    '''
-    if not pieceInMoveSpot and horizontalMovement and verticalMovement:
-        if (self.getPlayer() == "Black"):
-            if (moveY == 5 and abs(moveY - self.getY() < 2)):
-                if (board[moveY - 1][moveX] != " "):
-                    if (board[moveY - 1][moveX].getMoveCount() == 1 and board[moveY - 1][moveX].getType() == "p"):
-                        board[moveY][moveX] = board[yPos][xPos]
-                        board[moveY][moveX].moveCounter()
-                        board[moveY][moveX].updatePos(moveX, moveY)
-                        board[moveY - 1][moveX] = " "
-                        return
-        else:
-            if (moveY == 2 and abs(moveY - self.getY() < 2)):
-                if (board[moveY + 1][moveX] != " "):
-                    if (board[moveY + 1][moveX].getMoveCount() == 1 and board[moveY + 1][moveX].getType() == "p"):
-                        board[moveY][moveX] = board[yPos][xPos]
-                        board[moveY][moveX].moveCounter()
-                        board[moveY][moveX].updatePos(moveX, moveY)
-                        board[moveY - 1][moveX] = " "
-                        return
-        '''
 
     if (board[moveY][moveX] != " "):
         if (board[yPos][xPos].getType() == "K"
@@ -1859,10 +2005,10 @@ def makeMove(board, xPos, yPos, moveX, moveY):
             castling = True
 
     try:
-        if (legalMove and castling):
+        if (castling):
             return castleMove(board, xPos, yPos, moveX, moveY)
             # check if the move is legal
-        if (legalMove):
+        else:
             board[moveY][moveX] = board[yPos][xPos]
             board[moveY][moveX].moveCounter()
             board[moveY][moveX].updatePos(moveX, moveY)
@@ -1881,10 +2027,6 @@ def makeMove(board, xPos, yPos, moveX, moveY):
             ):
                 print("black pawn promotion")
                 return pawnPromotion(board, moveX, moveY)
-            return board
-
-        else:
-            # print("That is not a valid move!")
             return board
     except(AttributeError, IndexError):
 
@@ -1936,10 +2078,6 @@ def inCheck(board, player):
         for j in range(8):
             if (temp[i][j] != " "):
                 if (temp[i][j].getType() != "K"):
-                    if ((temp[i][j].getType() == "p") and (temp[i][j].getPlayer() != player) and temp[i][
-                        j].attackMove(temp, kingX, kingY)):
-                        r = [1, i, j]
-                        return r
 
                     if temp[i][j].getPlayer() != player and temp[i][j].move(temp, kingX, kingY):
                         r = [1, i, j]
@@ -1976,6 +2114,7 @@ def checkMate(board, player, coordinates):
                 # print("Case 1")
 
                 return False
+
             if (temp[i][j] != " "):
                 # (2)
 
@@ -1987,8 +2126,8 @@ def checkMate(board, player, coordinates):
 
                     return False
                 # (3)
-                # basically checking every position if it is a friendly piece
-                # then if it is a friendly piece and can move, make the move.
+                #  checking every position if it is a friendly piece
+                #  and if it can move, make the move.
                 # if that move gets the player out of check, then return false
                 # else undo the move, check the next available move
                 # extremely inefficient but it works for now
@@ -2009,7 +2148,6 @@ def checkMate(board, player, coordinates):
     return True
 
     # find if there is a move availble to take the king out of check
-    return checkMte
 
 
 # converts a user entered string to board indices
@@ -2304,7 +2442,7 @@ def twoAIGame():
 
     gamma = 0.95  # decay or discount rate, to calculate the future discounted reward
     epsilon = 1.0  # exploration rate, this is the rate in which a player randomly makes a move
-    epsilonDecay = 0.999995  # decreases the exploration rate as the number of games played increases
+    epsilonDecay = 0.20  # decreases the exploration rate as the number of games played increases
     epsilonMin = 0.01  # the player should explore at least this amount
     learningRate = 0.01  # how much the NN learns after each exploration
     wp: DQNNPlayer = DQNNPlayer(50000, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, "White")
@@ -2312,7 +2450,7 @@ def twoAIGame():
 
     # wp.buildModel()
     # bp.buildModel()
-    max_num_moves=45
+    max_num_moves = 45
     numGames = 0
     whiteWins = 0
     blackWins = 0
@@ -2329,9 +2467,13 @@ def twoAIGame():
     # if (bp.model_is_built):
     print("Loading saved model for Black.... ")
     bp.model = load_model('Black_AI_Model.h5')
-    while (numGames < 1000):
-        wp.epsilonDecay -= 0.0001
-        bp.epsilonDecay -= 0.0001
+    while (numGames < 10000):
+
+        wp.epsilonDecay -= 0.001
+        bp.epsilonDecay -= 0.001
+        wp.epsilon *= epsilonDecay
+        bp.epsilon *= epsilonDecay
+
         board = newGame()
         numGames += 1
         winner = ""
@@ -2341,7 +2483,7 @@ def twoAIGame():
         counter = 0
         # if (wp.model_is_built):
         # print the info every 100 games
-        if (numGames % 500 == 0):
+        if (numGames % 1000 == 0):
             print("Number of games played: ")
             print(numGames)
             print("Wins for White: ")
@@ -2359,10 +2501,10 @@ def twoAIGame():
             print("White moveError count: ")
             print(wp.error_count)
             # build the models
-            if(max_num_moves>25):
-                max_num_moves-=1
+            if (max_num_moves > 25):
+                max_num_moves -= 1
 
-            #build and update the models
+            # build and update the models
             wp.buildModel()
             bp.buildModel()
             print("Loading saved model for White.... ")
@@ -2375,6 +2517,16 @@ def twoAIGame():
 
         inCheckMate = False
         try:
+            print("Black error count:")
+            print(bp.error_count)
+            print("White error count:")
+            print(wp.error_count)
+            print("mvcnt")
+            print(wp.moveCount)
+            wp.moveCount = 0
+            bp.moveCount = 0
+            # print(wp.memory.__sizeof__())
+            time.sleep(5)
             while (not inCheckMate):
 
                 # train on a 50 move limit draw
@@ -2382,20 +2534,22 @@ def twoAIGame():
                     counter = 0
                     draw += 1
                     winner = "Draw"
-                    print(winner+" number of moves")
+                    # wp.buildModel()
+                    print(winner + " number of moves")
                     print(max_num_moves)
+
                     print("clearing memory that resulted in a draw")
-                    time.sleep(5)
-                    for i in range(int(max_num_moves/2)):#
+
+                    for i in range(int(wp.moveCount)):  #
                         wp.memory.popleft()
+                    for j in range(bp.moveCount):
                         bp.memory.popleft()
-                    #if the number of moves made is odd, wp has made 1 more move than black
-                    if(max_num_moves%2==0):
-                        wp.memory.popleft()
-                    break#go to the outer loop
+                    # if the number of moves made is odd, wp has made 1 more move than black
+
+                    break  # go to the outer loop
                     # reset the epsilon value to avoid learning plateau
-                    #wp.epsilon = epsilon
-                    #bp.epsilon = epsilon
+                    # wp.epsilon = epsilon
+                    # bp.epsilon = epsilon
 
                 counter += 1
                 reward = 0
@@ -2406,7 +2560,8 @@ def twoAIGame():
                     mi = wp.AImove(temp)
                     print(encoder(temp, mi))
                     board2 = makeMove(temp, mi[0], mi[1], mi[2], mi[3])  # update the board
-                    printBoard(board2)
+                    wp.moveCount += 1
+                    #printBoard(board2)
                 except(RecursionError):
                     break
                 # store the previous state, move, current state, reward, and if white is in checkmate
@@ -2419,8 +2574,12 @@ def twoAIGame():
                     break
                 # see if black is in checkmate
                 if (inCheckInfo[0] == 1):
+                    # wp.buildModel()
+                    # bp.buildModel()
                     if (checkMate(board, "Black", inCheckInfo)):
                         print("Black is in Checkmate!")
+                        wp.buildModel()
+                        wp.model = load_model('White_AI_Model.h5')
                         whiteWins += 1
                         winner = "White"
                         inCheckMate = True
@@ -2436,14 +2595,16 @@ def twoAIGame():
                 try:
                     # try to return a move based on model, if move is not legal, return a random move
                     mi = bp.AImove(temp)
-                    print(encoder(temp, mi)) #print the algebraic notation encoded move
-                    board2 = makeMove(temp, mi[0], mi[1], mi[2], mi[3])#update the board
-                    printBoard(board2)#print the board
+                    print(encoder(temp, mi))  # print the algebraic notation encoded move
+                    board2 = makeMove(temp, mi[0], mi[1], mi[2], mi[3])  # update the board
+                    bp.moveCount += 1
+                    #printBoard(board2)  # print the board
                 except(RecursionError):
                     break
                 # reward = getEvaluation(board, bp.player, counter)
                 # store the previous state, move, current state, reward, and if black is in checkmate
                 bp.remember(board, mi, board2, 0, inCheckMate, "")
+
                 board = copy.deepcopy(board2)
                 # printBoard(board)
                 # store the movelist for adding to csv file
@@ -2455,8 +2616,13 @@ def twoAIGame():
                     break
                 # see if white is in checkMate
                 if (inCheckInfo[0] == 1):
+                    # wp.buildModel()
+
                     if (checkMate(board, "White", inCheckInfo)):
                         print("White is in Checkmate!")
+
+                        bp.buildModel()
+                        bp.model = load_model('Black_AI_Model.h5')
                         blackWins += 1
                         winner = "Black"
                         inCheckMate = True
@@ -2467,8 +2633,9 @@ def twoAIGame():
                         print("White is in Check")
                         printBoard(board)
                         blackInCheck += 1
+
             # write the data to a .csv file
-            if (winner != "Draw"):
+            if (winner != "Draw" or winner != ""):
                 writeDataToExcel(recordMoves, counter, winner, blackInCheck, whiteInCheck, blackWins, whiteWins,
                                  numGames)
                 wp.epsilonDecay -= 0.01
@@ -2477,10 +2644,11 @@ def twoAIGame():
                 bp.learningRate += 0.01
                 if (winner == "Black"):
                     bp.remember(board, mi, board2, reward, inCheckMate, "Black")
-                   # bp.buildModel()
-                else:
+                # bp.buildModel()
+                elif (winner == "White"):
                     wp.remember(board, mi, board2, reward, inCheckMate, "White")
-                    #wp.buildModel()
+                    # wp.buildModel()
+
 
 
 
