@@ -43,7 +43,7 @@ onlyLegalMoves = True
 # note, see _encoders.py. a line of code was commented out to suppress warnings
 # https://keon.io/deep-q-learning/
 # https://www.youtube.com/watch?v=aCEvtRtNO-M
-class DQNNPlayer(object):
+class DNNPlayer(object):
     def __init__(self, memSize, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, player):
         self.gamma = gamma  # decay or discount rate, to calculate the future discounted reward
         self.epsilon = epsilon  # exploration rate, this is the rate in which a player randomly makes a move
@@ -154,12 +154,16 @@ class DQNNPlayer(object):
         else:
             self.model.save('Black_AI_Model.h5', True)
 
+    # if epsilon val < rand make random move.
+    # if Neural Network has a legal prediction, make that move.
+    # If NN move is not legal, make minimax move.
     def AImove(self, boardState):
         # give opportunity for random move first
         #
 
-        if np.random.rand() <= self.epsilon:
-            return randomAImove(boardState, self.player)
+        # if epsilon val < rand make random move.
+        # if np.random.rand() >= self.epsilon:
+        # return randomAImove(boardState, self.player)
         print("------MAKING A PREDICTION FOR " + self.player + " +-------")
         temp2 = copy.deepcopy(boardState)
         temp2 = convert_to_binary_matrix(temp2, True)
@@ -185,6 +189,7 @@ class DQNNPlayer(object):
         # convert the binary vector to a move list
         move = []
         s = ''
+        # if Neural Network has a legal prediction, make that move.
         for j in range(16):
             if (j % 4 != 0):
                 s += (str(prediction[0][j]))
@@ -193,18 +198,32 @@ class DQNNPlayer(object):
                 # print(move)
                 s = ""
         try:
+            # print(move)
             if (boardState[move[1]][move[0]].move(boardState, move[2], move[3])):
-                print("we made a good move!")
+                print("Neural Network says:" + encoder(boardState, move))
                 return move
+            # If NN move is not legal, make minimax move.
             else:
                 self.error_count += 1
-                move = randomAImove(boardState, self.player)
+                root: tree_node = tree_node(boardState, None, 0, self.player)
+                mini: minimaxTree = minimaxTree(root, boardState, self.player, 2)
+                mini.construct_tree(root, boardState, self.player, 3)
+                miniMaxMove = mini.getMove()
+                move = miniMaxMove
+                print("MiniMax says:" + encoder(boardState, move))
                 return move
 
         except(AttributeError):
             self.error_count += 1
-            move = randomAImove(boardState, self.player)
-            return move
+            try:
+                root: tree_node = tree_node(boardState, None, 0, self.player)
+                mini: minimaxTree = minimaxTree(root, boardState, self.player, 2)
+                mini.construct_tree(root, boardState, self.player, 3)
+                miniMaxMove = mini.getMove()
+                move = miniMaxMove
+                return move
+            except:
+                return randomAImove(boardState, self.player)
 
     def remember(self, state, action, next_state, reward, gameComplete, winningPlayer):
         from keras.models import load_model
@@ -221,7 +240,7 @@ class DQNNPlayer(object):
 
 # node is an object that holds the associated value a move in a minimax tree
 class tree_node(object):
-    def __init__(self,  state,  move, value, player ):
+    def __init__(self, state, move, value, player):
         self.node_value = value
         self.move = move
         self.state = state
@@ -234,102 +253,108 @@ class tree_node(object):
 class minimaxTree(object):
 
     def __init__(self, node, state, player, depth):
-        self.root=node
-        self.state=state
-        self.player=player
-        self.depth=depth
-        self.tree=None
-    def getEval(self, board, player, ML):#heuristic
+        self.root = node
+        self.state = state
+        self.player = player
+        self.depth = depth
+        self.tree = None
 
-        best=-9999999;
-        stack=[]
+    def getEval(self, board, player, ML):  # heuristic
+        stack = []
+        temp = []
+        if (player == "White"):
+            enemyPlayer = "Black"
+        else:
+            enemyPlayer = "White"
+        best = -9999999
+        numStackItems = 0
+        stack = []
 
-        while(ML):
-            pSum=0
-            eSum=0
-            moveVal=0
-            move=ML.pop()
+        while (ML):
+            pSum = 0
+            eSum = 0
+            moveVal = 0
+            move = ML.pop()
 
-            for i in range (8):
+            for i in range(8):
                 for j in range(8):
                     if board[i][j] != " ":
-                        if board[i][j].player==player:
-                            pSum+=board[i][j].value
+                        if board[i][j].player == player:
+                            pSum += board[i][j].value
                         else:
-                            eSum-=board[i][j].value
+                            eSum -= board[i][j].value
+            moveVal = pSum + eSum
 
-            moveVal=pSum+eSum
 
-            if(moveVal>=best):
-                temp=copy.deepcopy(board)
-                #printBoard(temp)
-                #print(move)
-                temp=makeMove(temp, move[0], move[1], move[2], move[3])
+            if (moveVal >= best or numStackItems <= 2):
+                numStackItems += 1
+                temp = copy.deepcopy(board)
+
+                temp = makeMove(temp, move[0], move[1], move[2], move[3])
 
                 moveInfo = [temp, move, best]
-                best= moveVal
-
+                best = moveVal
                 stack.append(moveInfo)
+
         return stack
 
-    def construct_tree(self, node, state, player, depth):
 
+    def construct_tree(self, node, state, player, depth):
         if depth <= 0:
             return
-        list_of_moves=[]
-        list_of_moves=getAvailableMoves(state, player)
-        MS=self.getEval(state, player, list_of_moves)
+        list_of_moves = []
+        list_of_moves = getAvailableMoves(state, player)
+        MS = self.getEval(state, player, list_of_moves)
 
-        info=MS.pop()
+        info = MS.pop()
         left: tree_node = tree_node(info[0], info[1], info[2], player)
-        info=MS.pop()
+        info = MS.pop()
         right: tree_node = tree_node(info[0], info[1], info[2], player)
         MS.clear()
+        # when available moves is <2
+        # return node
 
+        node.left_child = left
+        node.right_child = right
 
-        node.left_child=left
-        node.right_child=right
+        # return
 
-        #switch the evaluating player
-        if(player=="Black"):
-            player=="White"
+        # switch the evaluating player
+        if (player == "Black"):
+            player == "White"
         else:
-            player=="Black"
+            player == "Black"
 
         self.construct_tree(node.left_child, node.left_child.state, player, depth - 1)
         self.construct_tree(node.right_child, node.right_child.state, player, depth - 1)
 
+
     def traverse_tree(self, node, sum, player):
-        flag=False
-        if (node.right_child == None or node.left_child==None):
+        flag = False
+        if (node.right_child == None or node.left_child == None):
             return
-        if(node.player!=player):
-            flag=True
-        if(not flag):
+        if (node.player != player):
+            flag = True
+        if (not flag):
             sum += node.left_child.node_value
             sum += node.right_child.node_value
-        if(flag):
+        if (flag):
             sum -= node.left_child.node_value
             sum -= node.right_child.node_value
         self.traverse_tree(node.left_child, sum, player)
         self.traverse_tree(node.right_child, sum, player)
 
         return sum
+
+
     def getMove(self):
+        left = self.traverse_tree(self.root.left_child, 0, self.player)
+        right = self.traverse_tree(self.root.right_child, 0, self.player)
 
-        left =self.traverse_tree(self.root.left_child, 0, self.player)
-        right=self.traverse_tree(self.root.right_child, 0, self.player)
-
-        if(left>=right):
+        if (left >= right):
             return self.root.left_child.move
         else:
             return self.root.right_child.move
-
-
-
-
-
-
 
 
 '''
@@ -914,7 +939,7 @@ class knight(piece):
         self.type = "k"
         self.moveCount = 0
         self.string = " "
-        self.value=3
+        self.value = 3
         self.encodedVal = 4
         if (player == "Black"):
             self.string = "♘"
@@ -1917,11 +1942,13 @@ def pawnPromotion(board, xPos, yPos):
 
     while (p != "q" or p != "r" or p != "b" or p != "r" or p != "k"):
 
+        '''
         print("Select a type of piece to promote your pawn to:")
         print("q for Queen")
         print("r for Rook")
         print("b for Bishop")
         print("k for Knight")
+        '''
         if not realPlayer:
             p = "q"
         else:
@@ -2413,14 +2440,12 @@ def twoAIGame():
     # def __init__(self, memSize, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, player):
 
     gamma = 0.95  # decay or discount rate, to calculate the future discounted reward
-    epsilon = 1.0  # exploration rate, this is the rate in which a player randomly makes a move
+    epsilon = .95  # exploration rate, this is the rate in which a player randomly makes a move
     epsilonDecay = 0.20  # decreases the exploration rate as the number of games played increases
     epsilonMin = 0.01  # the player should explore at least this amount
     learningRate = 0.01  # how much the NN learns after each exploration
-    wp: DQNNPlayer = DQNNPlayer(50000, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, "White")
-    bp: DQNNPlayer = DQNNPlayer(50000, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, "Black")
-
-
+    wp: DNNPlayer = DNNPlayer(50000, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, "White")
+    bp: DNNPlayer = DNNPlayer(50000, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, "Black")
 
     # wp.buildModel()
     # bp.buildModel()
@@ -2503,14 +2528,13 @@ def twoAIGame():
             time.sleep(5)
 
             while (not inCheckMate):
-                root: tree_node=tree_node(board,None,  0, "White")
-                mini: minimaxTree = minimaxTree(root, board, "White", 2)
-                mini.construct_tree(root, board, "White", 3)
-                m=mini.getMove()
 
-                print("Minimax says:" + encoder(board, m))
+                # root: tree_node=tree_node(board,None,  0, "White")
+                # mini: minimaxTree = minimaxTree(root, board, "White", 2)
+                # mini.construct_tree(root, board, "White", 3)
+                # m=mini.getMove()
 
-
+                # print("Minimax says:" + encoder(board, m))
 
                 # train on a 50 move limit draw
                 if (counter > max_num_moves):
@@ -2544,7 +2568,7 @@ def twoAIGame():
                     print(encoder(temp, mi))
                     board2 = makeMove(temp, mi[0], mi[1], mi[2], mi[3])  # update the board
                     wp.moveCount += 1
-                    #printBoard(board2)
+                    # printBoard(board2)
                 except(RecursionError):
                     break
                 # store the previous state, move, current state, reward, and if white is in checkmate
@@ -2581,7 +2605,7 @@ def twoAIGame():
                     print(encoder(temp, mi))  # print the algebraic notation encoded move
                     board2 = makeMove(temp, mi[0], mi[1], mi[2], mi[3])  # update the board
                     bp.moveCount += 1
-                    #printBoard(board2)  # print the board
+                    # printBoard(board2)  # print the board
                 except(RecursionError):
                     break
                 # reward = getEvaluation(board, bp.player, counter)
