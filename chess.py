@@ -244,12 +244,11 @@ class minimaxTree(object):
         best=-9999999;
         stack=[]
 
-        while(ML!=None):
-
+        while(ML):
             pSum=0
             eSum=0
             moveVal=0
-            move=ML.pop();
+            move=ML.pop()
 
             for i in range (8):
                 for j in range(8):
@@ -263,12 +262,14 @@ class minimaxTree(object):
 
             if(moveVal>=best):
                 temp=copy.deepcopy(board)
-                temp=makeMove(board, move[0], move[1], move[2], move[3])
+                #printBoard(temp)
+                #print(move)
+                temp=makeMove(temp, move[0], move[1], move[2], move[3])
 
                 moveInfo = [temp, move, best]
                 best= moveVal
 
-                stack.push(moveInfo)
+                stack.append(moveInfo)
         return stack
 
     def construct_tree(self, node, state, player, depth):
@@ -283,7 +284,7 @@ class minimaxTree(object):
         left: tree_node = tree_node(info[0], info[1], info[2], player)
         info=MS.pop()
         right: tree_node = tree_node(info[0], info[1], info[2], player)
-        MS.empty()
+        MS.clear()
 
 
         node.left_child=left
@@ -300,7 +301,7 @@ class minimaxTree(object):
 
     def traverse_tree(self, node, sum, player):
         flag=False
-        if (node == None):
+        if (node.right_child == None or node.left_child==None):
             return
         if(node.player!=player):
             flag=True
@@ -310,7 +311,6 @@ class minimaxTree(object):
         if(flag):
             sum -= node.left_child.node_value
             sum -= node.right_child.node_value
-
         self.traverse_tree(node.left_child, sum, player)
         self.traverse_tree(node.right_child, sum, player)
 
@@ -914,6 +914,7 @@ class knight(piece):
         self.type = "k"
         self.moveCount = 0
         self.string = " "
+        self.value=3
         self.encodedVal = 4
         if (player == "Black"):
             self.string = "♘"
