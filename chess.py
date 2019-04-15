@@ -219,146 +219,91 @@ class DQNNPlayer(object):
         # get the list of moves
 
 
-class minimax_tree(object):
-    def __init__(self, minimax_player, board, height):
-        self.height = height
-        if (minimax_player.player == "White"):
-            self.player = "White"
-            self.enemy_player = "Black"
-        else:
-            self.player = "Black"
-            self.enemy_player = "White"
-
-    def construct_tree(self, board):
-        depth = 0
-        value = 0
-        root_node: tree_node = tree_node(minimax_player, board, depth, value,None, None)
-        # move_list = getAvailableMoves(board,self.player)
-        # move_stack=self.move_stack(board, move_list)
-        node_queue = []
-
-        node_queue.append(root_node)
-        evaluating_enemy_player = False
-        for depth in range(self.height):
-            root_node = inOrderTraversal(root_node)
-            for num_children in range(2 ** depth):
-                if (not evaluating_enemy_player):
-                    move_list = getAvailableMoves(board, self.player)
-                    move_stack = self.move_stack(board, move_list)
-                else:
-                    move_list = getAvailableMoves(board, self.enemy_player)
-                    move_stack = self.move_stack(board, move_list)
-                tempboard = copy.deepcopy(board)
-
-                move = move_stack.pop()
-                tempboard = makeMove(tempboard, move[0], move[1], move[2], move[3])
-                TN: tree_node = tree_node(minimax_player, board, depth, minimax_player.heuristic(board), move, root_node)
-
-                root_node.left_child = tree_node
-
-                move = move_stack.pop()
-                tempboard = makeMove(tempboard, move[0], move[1], move[2], move[3])
-                TN: tree_node = tree_node(minimax_player, board, depth, minimax_player.heuristic(board),move, root_node)
-
-                root_node.right_child = tree_node
-
-                node_queue.append(TN)
-            evaluating_enemy_player = not evaluating_enemy_player
-        while(root_node.parent!=None):
-            root_node=root_node.parent
-
-        return root_node
-
-    # return the parent node that does not have "filled" children
-    def inOrderTraversal(self, node):
-        if (node.left_child == None or node.right_child == None):
-            return node
-            inOrderTraversal(node.left_child)
-            inOrderTraversal(node.right_child)
-    def leftSummation(self, leftChild):
-        summation+=leftChild.node_value
-        if (leftChild.left_child == None or leftChild.right_child == None):
-            return summation
-        leftSummation(node.left_child)
-        leftSummation(node.right_child)
-    def rightSummation(self, rightChild):
-        summation+=rightChild.node_value
-        if (rightChild.left_child == None or rightChild.right_child == None):
-            return summation
-        rightSummation(rightChild.left_child)
-        rightSummation(rightChild.right_child)
-
-
-    # initially takes in root.left as the source node
-
-
-        # find the 3 best moves that the player can make
-
-    def move_stack(self, board, move_list):
-        len = len(move_list)
-        move_stack = []
-        best_move = 0
-        move_eval = 0
-        for i in range(len):
-            temp_board = copy.deepcopy(board)
-            temp_board = makeMove(temp_board, move_list[i][0], move_list[i][1], move_list[i][2], move_list[i][3])
-            move_eval = minimax_player.heuristic(temp_board)
-            if (move_eval > best_move):
-                best_move = move_eval
-                move_stack.append(move_list[i])
-        return move_stack
-
-
 # node is an object that holds the associated value a move in a minimax tree
 class tree_node(object):
-    def __init__(self, minimax_player, board, depth, value, move, parent):
+    def __init__(self,  state,  move, value, player ):
         self.node_value = value
-        self.depth = depth
         self.move = move
-        self.board = None
+        self.state = state
+        self.player = player
         self.parent = None
         self.left_child = None
         self.right_child = None
+class minimaxTree(object):
+
+    def __init__(self, node,state, player, depth):
+
+        self.root=node
+        self.state=state
+        self.player=player
+        self.depth=depth
+        self.tree=None
+    def getEval(self, board, player, ML):#heuristic
+
+        best=-9999999;
+        stack=[]
+
+        while(ML!=None):
+
+            pSum=0
+            eSum=0
+            moveVal=0
+            move=ML.pop();
+
+            for i in range (8):
+                for j in range(8):
+                    if board[i][j] != " ":
+                        if board[i][j].player==player:
+                            pSum+=board[i][j].value
+                        else:
+                            eSum-=board[i][j].value
+
+            moveVal=pSum+eSum
+
+            if(moveVal>=best):
+                temp=copy.deepcopy(board)
+                temp=makeMove(board, move[0], move[1], move[2], move[3])
+
+                moveInfo = [temp, move, best]
+                best= moveVal
+
+                stack.push(moveInfo)
+        return stack
+
+    def construct_tree(self, node, state, player, depth):
+
+        if depth <= 0:
+            return
+        list_of_moves=[]
+        list_of_moves=getAvailableMoves(state, player)
+        MS=self.getEval(state, player, list_of_moves)
+
+        info=MS.pop()
+        left: tree_node = tree_node(info[0],info[1], info[2], player)
+        info=MS.pop()
+        right: tree_node = tree_node(info[0],info[1], info[2], player)
+        MS.empty()
 
 
-class minimax_player(object):
-    def __init__(self, player, depth):
-        self.player = player
-        self.depth = depth
+        node.left_child=left
+        node.right_child=right
 
-    def heuristic(self, board):
-        playerSum = 0
-        enemySum = 0
-        calculatedVal = 0
-        for i in range(8):
-            for j in range(8):
-                if (board[i][j] != ""):
-                    if (board[i][j] == self.player):
-                        playerSum += board[i][j].encodedVal
-                    else:
-                        enemySum += board[i][j].encodedVal
-        inCheckInfo = inCheck(board, "Black")
-        # black is in check
-        if (inCheckInfo[0] == 1 and self.player == "Black" and inCheck(board, "Black")):
-            calculatedVal = -999999
-        if (inCheckInfo[0] == 1 and self.player == "White"):
-            calculatedVal = 999999
-        # if white is in check
-        inCheckInfo = inCheck(board, "White")
-        if (inCheckInfo[0] == 1 and self.player == "White"):
-            calculatedVal = -999999
-        if (inCheckInfo[0] == 1 and self.player == "Black"):
-            calculatedVal = 999999
+        #switch the evaluating player
+        if(player=="Black"):
+            player=="White"
         else:
-            calculatedVal = (playerSum - enemySum)
+            player=="Black"
 
-        return calculatedVal
+        self.construct_tree(node.left_child, node.left_child.state, player, depth - 1)
+        self.construct_tree(node.right_child, node.right_child.state, player, depth - 1)
+        self.tree=node
+    def traverse_tree(self):
+        while(self.tree.left!=None):
+            if(self.tree.)
 
-    def minimax_move(self, root):
-        if(self.leftSummation(root.left_child)>self.rightSummation(root.right_child)):
-            return root.left_child.move
-        else:
-            return root.right_child.move
+
+
+
 
 
 '''
