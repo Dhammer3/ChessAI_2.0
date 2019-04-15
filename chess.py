@@ -229,10 +229,11 @@ class tree_node(object):
         self.parent = None
         self.left_child = None
         self.right_child = None
+
+
 class minimaxTree(object):
 
-    def __init__(self, node,state, player, depth):
-
+    def __init__(self, node, state, player, depth):
         self.root=node
         self.state=state
         self.player=player
@@ -279,9 +280,9 @@ class minimaxTree(object):
         MS=self.getEval(state, player, list_of_moves)
 
         info=MS.pop()
-        left: tree_node = tree_node(info[0],info[1], info[2], player)
+        left: tree_node = tree_node(info[0], info[1], info[2], player)
         info=MS.pop()
-        right: tree_node = tree_node(info[0],info[1], info[2], player)
+        right: tree_node = tree_node(info[0], info[1], info[2], player)
         MS.empty()
 
 
@@ -296,10 +297,35 @@ class minimaxTree(object):
 
         self.construct_tree(node.left_child, node.left_child.state, player, depth - 1)
         self.construct_tree(node.right_child, node.right_child.state, player, depth - 1)
-        self.tree=node
-    def traverse_tree(self):
-        while(self.tree.left!=None):
-            if(self.tree.)
+
+    def traverse_tree(self, node, sum, player):
+        flag=False
+        if (node == None):
+            return
+        if(node.player!=player):
+            flag=True
+        if(not flag):
+            sum += node.left_child.node_value
+            sum += node.right_child.node_value
+        if(flag):
+            sum -= node.left_child.node_value
+            sum -= node.right_child.node_value
+
+        self.traverse_tree(node.left_child, sum, player)
+        self.traverse_tree(node.right_child, sum, player)
+
+        return sum
+    def getMove(self):
+
+        left =self.traverse_tree(self.root.left_child, 0, self.player)
+        right=self.traverse_tree(self.root.right_child, 0, self.player)
+
+        if(left>=right):
+            return self.root.left_child.move
+        else:
+            return self.root.right_child.move
+
+
 
 
 
@@ -2393,6 +2419,8 @@ def twoAIGame():
     wp: DQNNPlayer = DQNNPlayer(50000, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, "White")
     bp: DQNNPlayer = DQNNPlayer(50000, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, "Black")
 
+
+
     # wp.buildModel()
     # bp.buildModel()
     max_num_moves = 45
@@ -2472,7 +2500,16 @@ def twoAIGame():
             bp.moveCount = 0
             # print(wp.memory.__sizeof__())
             time.sleep(5)
+
             while (not inCheckMate):
+                root: tree_node=tree_node(board,None,  0, "White")
+                mini: minimaxTree = minimaxTree(root, board, "White", 2)
+                mini.construct_tree(root, board, "White", 3)
+                m=mini.getMove()
+
+                print("Minimax says:" + encoder(board, m))
+
+
 
                 # train on a 50 move limit draw
                 if (counter > max_num_moves):
