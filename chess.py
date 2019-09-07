@@ -1,34 +1,20 @@
 from tensorflow.python.client import device_lib
 
-print(device_lib.list_local_devices())
+
 import array
 import time
 import random
 import sys
 import pandas as pd
 import numpy as np
-
 import tensorflow as tf
-
-from numpy import argmax
-from numpy import array
 from collections import deque
 
 from keras.models import Sequential
-from keras.layers import Dense, Embedding, Flatten
 from keras.layers import Dense, Dropout, LSTM, \
     CuDNNLSTM  # used to stop data from being diluted over time, typical of RNN's
-from keras.datasets import imdb
-from keras.models import model_from_json
-from keras import optimizers
 from keras.models import load_model
-from sklearn.preprocessing import LabelEncoder
-from sklearn.preprocessing import OneHotEncoder
-from keras.losses import categorical_crossentropy
 import keras
-from llist import dllist, dllistnode
-import openpyxl
-import csv
 
 sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
 
@@ -230,7 +216,6 @@ class DNNPlayer(object):
 
         action = convert_to_binary_matrix(action, False)
         state = convert_to_binary_matrix(state, True)
-        # next_board_state_encoded = one_hot_encoder(next_state, True)
         self.memory.append((state, action))
         if (gameComplete and winningPlayer == self.player):
             print("put game info into memory")
@@ -468,28 +453,7 @@ def convert_to_binary_matrix(to_encode, is_game_board):
     return move_to_bin
 
 
-def one_hot_encoder(toEncode, isBoard):
-    # toVector=[]
-    if (isBoard):
-        toEncode = sum(toEncode, [])
-        for i in range(64):
-            if (toEncode[i] != " "):
-                toEncode[i] = toEncode[i].toStr()
-            else:
-                toEncode[i] = " "
 
-    # transform the string encoding into one_hot_binary encoding
-    # https://machinelearningmastery.com/how-to-one-hot-encode-sequence-data-in-python/
-    toEncode = array(toEncode)
-    # print(encodedListOfMoves)
-    label_encoder = LabelEncoder()
-    integer_encoded = label_encoder.fit_transform(toEncode)
-    # print(integer_encoded)
-    # encode integer to binary
-    onehot_encoded = OneHotEncoder(sparse=False)
-    integer_encoded = integer_encoded.reshape(len(integer_encoded), 1)
-    onehot_encoded = onehot_encoded.fit_transform(integer_encoded)
-    return onehot_encoded
 
 
 def convertData():
@@ -1451,8 +1415,7 @@ def printBoard(b):
             else:
                 if (switch):
                     switch = not switch
-                    # print to the same line
-                    printstr = (Back.LIGHTWHITE_EX + " " + u'\u2003' + " ")
+                    printstr = (Back.LIGHTWHITE_EX + " " + u'\u2003' + "  ")
                 else:
                     switch = not switch
                     printstr = (Back.LIGHTBLACK_EX + " " + u'\u2003' + " ")
@@ -2151,9 +2114,9 @@ def checkMate(board, player, coordinates):
 
 # converts a user entered string to board indices
 def convertInput(xInput, yInput):
-    x = xInput[0]
+    x = xInput[0].upper()
     x = ord(x)
-    x = x - 65
+    x = x - 65 #
     y = int(yInput)
     y -= 1
     r = [x, y]
@@ -2318,11 +2281,8 @@ def getAvailableMoves(board, player):
     for i in range(8):
         # cols
         for j in range(8):
-
             if board[i][j] != " ":
-
                 if board[i][j].getPlayer() == player:
-
                     # find all the spots on the board that piece can move
                     # rows
                     for y in range(8):
@@ -2459,11 +2419,9 @@ def twoAIGame():
     recordMoves = []
     counter = 0
     inCheckMate = False
-    # board = newGame()
     print("Training....")
     print("Loading saved model for White.... ")
     wp.model = load_model('White_AI_Model.h5')
-    # if (bp.model_is_built):
     print("Loading saved model for Black.... ")
     bp.model = load_model('Black_AI_Model.h5')
     while (numGames < 10000):
@@ -2524,7 +2482,6 @@ def twoAIGame():
             print(wp.moveCount)
             wp.moveCount = 0
             bp.moveCount = 0
-            # print(wp.memory.__sizeof__())
             time.sleep(5)
 
             while (not inCheckMate):
@@ -2840,7 +2797,6 @@ def writeDataToExcel(moveList, moveCount, winner, blackInCheck, whiteInCheck, bl
 
 class driver():
     l = [0, 0, 0]
-    list = dllist()
     # ensure that the test cases pass
     # testCases()
     print()
