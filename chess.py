@@ -1,7 +1,3 @@
-from tensorflow.python.client import device_lib
-
-
-import array
 import time
 import random
 import sys
@@ -9,23 +5,22 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 from collections import deque
-
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, LSTM, \
     CuDNNLSTM  # used to stop data from being diluted over time, typical of RNN's
 from keras.models import load_model
 import keras
-
-sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
-
+#sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
 from colorama import Fore, Back, Style
 import copy
 
 realPlayer = False
-# used for the test cases
 onlyLegalMoves = True
 
-
+#adjusting the board colors https://pypi.org/project/colorama/
+board_color1=Back.LIGHTCYAN_EX
+board_color2=Back.LIGHTRED_EX
+move_color=Back.MAGENTA
 # note, see _encoders.py. a line of code was commented out to suppress warnings
 # https://keon.io/deep-q-learning/
 # https://www.youtube.com/watch?v=aCEvtRtNO-M
@@ -145,22 +140,13 @@ class DNNPlayer(object):
     # If NN move is not legal, make minimax move.
     def AImove(self, boardState):
         # give opportunity for random move first
-        #
-
-        # if epsilon val < rand make random move.
-        # if np.random.rand() >= self.epsilon:
-        # return randomAImove(boardState, self.player)
         print("------MAKING A PREDICTION FOR " + self.player + " +-------")
         temp2 = copy.deepcopy(boardState)
         temp2 = convert_to_binary_matrix(temp2, True)
         temp2 = np.resize(temp2, (1, 4, 64))
         temp2 = np.array(temp2)
 
-        # print(temp2)
         prediction = (self.model.predict(temp2))
-        # print("raw data:")
-        # print(prediction)
-        # print("")
         prediction = prediction.tolist()
 
         intStr = ""
@@ -342,90 +328,6 @@ class minimaxTree(object):
             return self.root.right_child.move
 
 
-'''
-    listOfMoves = getAvailableMoves(boardState, self.player)
-
-    # if np.random.rand()<=self.epsilon:      #first give the opportunity for a random move.
-    self.moveCount += 1
-    # self.epsilon *= self.epsilonDecay
-    print(self.player + " making random move")
-    return random.choice(listOfMoves)
-'''
-'''
-    #else:
-
-    # transform the list of moves to a list of encoded string moves
-        encodedListOfMoves = getAvailableMovesEncoded(boardState, self.player)
-
-        # transform the string encoding into one_hot_binary encoding
-        encodedListOfMoves = array(encodedListOfMoves)
-
-        label_encoder = LabelEncoder()
-        integer_encoded = label_encoder.fit_transform(encodedListOfMoves)
-
-        # encode integer to binary
-        onehot_encoded = OneHotEncoder(sparse=False)
-        integer_encoded = integer_encoded.reshape(len(integer_encoded), 1)
-        onehot_encoded = onehot_encoded.fit_transform(integer_encoded)
-
-        # invert back to string encoding
-        inverted = label_encoder.inverse_transform([argmax(onehot_encoded[0, :])])
-        inverted = decoder(inverted)
-        print(self.player + " made a decision!!!!!------------------")
-        self.moveCount += 1
-        return inverted        #best move is a placeholder for the predicted best move
-'''
-
-# if (self.player == "White"):
-# self.model.save_weights('AI_Chess_Model(3).h5', True)
-# else:
-# self.model.save_weights('AI_Chess_Model(5).h5', True)
-# self.model_is_built = True
-
-
-# del self.model
-
-'''
- s = "y"
- if (self.player == "White"):
-     print("writing to white")
-     # serialize model to JSON
-     model_json = self.model.to_json()
-     with open("AI_Training_Data.json", "w") as json_file:
-         json_file.write(model_json)
-     # serialize weights to HDF5
-     self.model.save_weights("AI_Chess_Model(1).h5")
-     print("Saved model to disk")
-     break
- else:
-     print("writing to black")
-     model_json = self.model.to_json()
-     with open("AI_Training_Data.json", "w") as json_file:
-         json_file.write(model_json)
-     # serialize weights to HDF5
-         self.model.save_weights("AI_Chess_Model(2).h5")
-     print("Saved model to disk")
-     break
-except(FileNotFoundError):
- print("File does not exist, try again.")
- '''
-
-'''
-def replay(self, batch_size):
-    minibatch = random.sample(self.memory, batch_size)
-    for state, action, reward, next_state, done in minibatch:
-        target = reward
-
-if not done:
-    target = reward + self.gamma * np.amax(self.model.predict(next_state)[0])
-    target_f = self.model.predict(state)
-    target_f[0][action] = target
-    self.model.fit(state, target_f, epochs=1, verbose=0)
-if (self.epsilon > self.epsilonMin):
-    self.epsilon *= self.epsilonDecay
-    '''
-
-
 def convert_to_binary_matrix(to_encode, is_game_board):
     int_str = ""
     move_to_bin = []
@@ -451,9 +353,6 @@ def convert_to_binary_matrix(to_encode, is_game_board):
     else:
         move_to_bin = np.reshape(move_to_bin, (-1, 16))  # 4 bits, 4 integers
     return move_to_bin
-
-
-
 
 
 def convertData():
@@ -1323,21 +1222,6 @@ class king(piece):
 
         if (inCheckInfo[0] == 1):
             return False
-        #   return False
-
-        '''
-        # will the king be put into check after it makes the move?
-        for i in range(8):
-            for j in range(8):
-                if (board[i][j] != " "):
-                    if (board[i][j].getType() != "K"):
-                        if ((board[i][j].getType() == "p") and (board[i][j].getPlayer() != self.getPlayer()) and
-                                board[i][j].attackMove(board, moveX, moveY)):
-                            return False
-                        if (board[i][j].getPlayer() != self.getPlayer()) and board[i][j].move(board, moveX, moveY) and \
-                                board[i][j].getType() != "p":
-                            return False
-        '''
         # player is trying to castle, is it a valid move?
         '''
                        When are you not allowed to castle?
@@ -1406,29 +1290,24 @@ def printBoard(b):
 
             if ((b[i][j] != " ")):
                 if (switch):
-                    switch = not switch
-                    printstr = (Back.LIGHTWHITE_EX + " " + b[i][j].string + " ")
-                    b[i][j]
+                    printstr = (board_color1 + " " + b[i][j].string + " ")
                 else:
-                    switch = not switch
-                    printstr = (Back.LIGHTBLACK_EX + " " + b[i][j].string + " ")
+                    printstr = (board_color2 + " " + b[i][j].string + " ")
             else:
                 if (switch):
-                    switch = not switch
-                    printstr = (Back.LIGHTWHITE_EX + " " + u'\u2003' + "  ")
+                    printstr = (board_color1 + " " + u'\u3000' + " ")
                 else:
-                    switch = not switch
-                    printstr = (Back.LIGHTBLACK_EX + " " + u'\u2003' + " ")
+                    printstr = (board_color2 + " " + u'\u3000' + " ")
 
             print(printstr, end="")
-
+            switch = not switch
             sys.stdout.write(Style.RESET_ALL)
         print(i + 1)
         sideNum -= 1
         switch = not switch
     print(bottom)
 
-
+#shows available moves for a selected piece
 def printBoardWithAvailMoves(b, x, y, dispBoard):
     if (b[y][x] == " "):
         print("You did not select a Piece!")
@@ -1451,26 +1330,20 @@ def printBoardWithAvailMoves(b, x, y, dispBoard):
 
             if ((b[i][j] != " ")):
                 if (switch):
-                    switch = not switch
-                    printstr = (Back.LIGHTWHITE_EX + " " + b[i][j].string + " ")
+                    printstr = (board_color1 + " " + b[i][j].string + " ")
                 else:
-                    switch = not switch
-                    printstr = (Back.LIGHTBLACK_EX + " " + b[i][j].string + " ")
+                    printstr = (board_color2+ " " + b[i][j].string + " ")
 
                 if (canMove):
-                    printstr = (Back.MAGENTA + " " + b[i][j].string + " ")
+                    printstr = (move_color + " " + b[i][j].string + " ")
             else:
                 if (switch):
-                    switch = not switch
-                    printstr = (Back.LIGHTWHITE_EX + " " + u'\u2003' + " ")
-
+                    printstr = (board_color1 + " " + u'\u3000' + " ")
                 else:
-                    switch = not switch
-                    printstr = (Back.LIGHTBLACK_EX + " " + u'\u2003' + " ")
-
+                    printstr = (board_color2 + " " + u'\u3000' + " ")
                 if (canMove):
-                    printstr = (Back.MAGENTA + " " + u'\u2003' + " ")
-
+                    printstr = (move_color + " " + u'\u3000' + " ")
+            switch = not switch
             print(printstr, end="")
             canMove = False
 
@@ -1481,6 +1354,7 @@ def printBoardWithAvailMoves(b, x, y, dispBoard):
     print(bottom)
 
 
+#set up a new board with piece objects
 def newGame():  #
     # initialize the pieces
     pb0: pawn = pawn("Black")
@@ -1544,65 +1418,7 @@ def newGame():  #
     return b
 
 
-def testGame():
-    # initialize the pieces
-    pb0: pawn = pawn("Black")
-    pb1: pawn = pawn("Black")
-    pb2: pawn = pawn("Black")
-    pb3: pawn = pawn("Black")
-    pb4: pawn = pawn("Black")
-    pb5: pawn = pawn("Black")
-    pb6: pawn = pawn("Black")
-    pb7: pawn = pawn("Black")
-    pw0: pawn = pawn("White")
-    pw1: pawn = pawn("White")
-    pw2: pawn = pawn("White")
-    pw3: pawn = pawn("White")
-    pw4: pawn = pawn("White")
-    pw5: pawn = pawn("White")
-    pw6: pawn = pawn("White")
-    pw7: pawn = pawn("White")
-
-    rb0: rook = rook("Black")
-    rb1: rook = rook("Black")
-    rw0: rook = rook("White")
-    rw1: rook = rook("White")
-
-    knb0: knight = knight("Black")
-    knb1: knight = knight("Black")
-    knw0: knight = knight("White")
-    knw1: knight = knight("White")
-
-    bb0: bishop = bishop("Black")
-    bb1: bishop = bishop("Black")
-    bw0: bishop = bishop("White")
-    bw1: bishop = bishop("White")
-
-    qb0: queen = queen("Black")
-    kb0: king = king("Black")
-    qw0: queen = queen("White")
-    kw0: king = king("White")
-
-    # initialize the board
-    b = [[rb0, " ", " ", " ", kb0, " ", " ", rb1],
-         [pb0, pb1, " ", pb3, pb4, qw0, " ", pb7],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [pw0, pw1, pb2, qb0, pw4, pw5, pb6, pw7],
-         [rw0, " ", " ", " ", kw0, " ", " ", rw1]]
-    # rows Y
-    for i in range(8):
-        # cols X
-        for j in range(8):
-            if (b[i][j] != " "):
-                b[i][j].setX(j)
-                b[i][j].setY(i)
-    return b
-
-
-# sets the xPos and yPos piece variables
+# sets the xPos and yPos for each piece
 def setPositions(b):
     for i in range(8):
         # cols X
@@ -1612,220 +1428,7 @@ def setPositions(b):
                 b[i][j].setY(i)
 
 
-# the castling test cases are not working. when tried in main, everything was as expected.
-def testCases():
-    # todo castling DONE ✓
-    # todo upgrade a pawn DONE ✓
-    # todo put an enemy king in check DONE ✓
-    # todo attempt to put a friendly king in check DONE ✓
-    # todo putting both kings in check or checkmate at the same time DONE ✓
-    # todo make a valid move
-    # todo make a invalid move
-    # todo capture an enemy piece
-    # todo attempt to capture a friendly piece
-    # todo castling
-    # todo upgrade a pawn
-    # todo put an enemy king in check#
-    # todo attempt to put a friendly king in check
-    # todo putting both kings in check or checkmate at the same time
-    # initialize the pieces
-    pb0: pawn = pawn("Black")
-    pb1: pawn = pawn("Black")
-    pb2: pawn = pawn("Black")
-    pb3: pawn = pawn("Black")
-    pb4: pawn = pawn("Black")
-    pb5: pawn = pawn("Black")
-    pb6: pawn = pawn("Black")
-    pb7: pawn = pawn("Black")
-    pw0: pawn = pawn("White")
-    pw1: pawn = pawn("White")
-    pw2: pawn = pawn("White")
-    pw3: pawn = pawn("White")
-    pw4: pawn = pawn("White")
-    pw5: pawn = pawn("White")
-    pw6: pawn = pawn("White")
-    pw7: pawn = pawn("White")
-
-    rb0: rook = rook("Black")
-    rb1: rook = rook("Black")
-    rw0: rook = rook("White")
-    rw1: rook = rook("White")
-
-    knb0: knight = knight("Black")
-    knb1: knight = knight("Black")
-    knw0: knight = knight("White")
-    knw1: knight = knight("White")
-
-    bb0: bishop = bishop("Black")
-    bb1: bishop = bishop("Black")
-    bw0: bishop = bishop("White")
-    bw1: bishop = bishop("White")
-
-    qb0: queen = queen("Black")
-    kb0: king = king("Black")
-    qw0: queen = queen("White")
-    kw0: king = king("White")
-
-    # initialize the board
-    b = [[rb0, knb0, bb0, qb0, kb0, bb1, knb1, rb1],
-         [pb0, pb1, pb2, pb3, pb4, pb5, pb6, pb7],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [pw0, pw1, pw2, pw3, pw4, pw5, pw6, pw7],
-         [rw0, knw0, bw0, qw0, kw0, bw1, knw1, rw1]]
-
-    b = [[rb0, " ", " ", " ", kb0, " ", " ", rb1],
-         [pb0, pb1, pb2, pb3, pb4, pb5, pb6, pb7],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [pw0, pw1, pw2, pw3, pw4, pw5, pw6, pw7],
-         [rw0, " ", " ", " ", kw0, " ", " ", rw1]]
-
-    setPositions(b)
-    # todo castling
-    # case 1: move is valid, attempt to castle with all of the rooks
-    if not kw0.move(b, rw1.getX(), rw1.getY()):
-        print("FAILED TEST CASE 1.1 ATTEMPT A VALID CASTLE KING WITH ROOK")
-    if not kw0.move(b, rw0.getX(), rw0.getY()):
-        print("FAILED TEST CASE 1.2 ATTEMPT A VALID CASTLE KING WITH ROOK")
-    if not kb0.move(b, rb0.getX(), rb0.getY()):
-        print("FAILED TEST CASE 1.3 ATTEMPT A VALID CASTLE KING WITH ROOK")
-    if not kb0.move(b, rb1.getX(), rb1.getY()):
-        print("FAILED TEST CASE 1.4 ATTEMPT A VALID CASTLE KING WITH ROOK")
-    b = [[rb0, " ", " ", bw0, kb0, bw0, " ", rb1],
-         [pb0, pb1, pb2, pb3, pb4, pb5, pb6, pb7],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [pw0, pw1, pw2, pw3, pw4, pw5, pw6, pw7],
-         [rw0, " ", " ", bw0, kw0, bw0, " ", rw1]]
-    setPositions(b)
-    # case 2: move is NOT valid, attempt to castle with all of the rooks
-    if kw0.move(b, rw1.getX(), rw1.getY()):
-        print("FAILED TEST CASE 2.1 ATTEMPT A NON VALID CASTLE KING WITH ROOK PIECE IN THE WAY!")
-    if kw0.move(b, rw0.getX(), rw0.getY()):
-        print("FAILED TEST CASE 2.2 ATTEMPT A NON VALID CASTLE KING WITH ROOK PIECE IN THE WAY!")
-    if kb0.move(b, rb0.getX(), rb0.getY()):
-        print("FAILED TEST CASE 2.3 ATTEMPT A NON VALID CASTLE KING WITH ROOK PIECE IN THE WAY!")
-    if kb0.move(b, rb1.getX(), rb1.getY()):
-        print("FAILED TEST CASE 2.4 ATTEMPT A NON VALID CASTLE KING WITH ROOK PIECE IN THE WAY!")
-    # CASE 3: NOT VALID KING IS IN CHECK
-    b = [[rb0, " ", " ", " ", kb0, " ", " ", rb1],
-         [pb0, pb1, pb2, pb3, pb4, qw0, pb6, pb7],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [pw0, pw1, pw2, qb0, pw4, pw5, rb1, pw7],
-         [rw0, " ", " ", " ", kw0, " ", " ", rw1]]
-    setPositions(b)
-    if kw0.move(b, rw1.getX(), rw1.getY()):
-        print("FAILED TEST CASE 3.1 ATTEMPT A NON VALID CASTLE KING WITH ROOK. KING IS IN CHECK ")
-    if kw0.move(b, rw0.getX(), rw0.getY()):
-        print("FAILED TEST CASE 3.2 ATTEMPT A NON VALID CASTLE KING WITH ROOK. PIECE IN THE WAY!")
-    # if kb0.move(b, rb0.getX(), rb0.getY()):
-    # print("FAILED TEST CASE 3.3 ATTEMPT A NON VALID CASTLE KING WITH ROOK. PIECE IN THE WAY!")
-    if kb0.move(b, rb1.getX(), rb1.getY()):
-        print("FAILED TEST CASE 3.4 ATTEMPT A NON VALID CASTLE KING WITH ROOK. PIECE IN THE WAY!")
-    # CASE 4: A ENEMY PIECE CAN MOVE TO A SQUARE THAT THE KING IS MOVING THROUGH
-    b = [[rb0, " ", " ", " ", kb0, " ", " ", " "],
-         [pb0, pb1, bw0, pb3, pb4, " ", qw0, pb7],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [pw0, " ", pw2, qb0, pw4, " ", rb1, pw7],
-         [rw0, " ", " ", " ", kw0, " ", " ", rw1]]
-    setPositions(b)
-
-    if kw0.move(b, rw1.getX(), rw1.getY()):
-        print("FAILED TEST CASE 3.5 ATTEMPT A NON VALID CASTLE A ENEMY PIECE CAN MOVE THERE! ")
-    if kw0.move(b, rw0.getX(), rw0.getY()):
-        print("FAILED TEST CASE 3.6 ATTEMPT A NON VALID CASTLE A ENEMY PIECE CAN MOVE THERE!")
-    if kb0.move(b, rb0.getX(), rb0.getY()):
-        print("FAILED TEST CASE 3.7 ATTEMPT A NON VALID CASTLE A ENEMY PIECE CAN MOVE THERE!")
-    if kb0.move(b, rb1.getX(), rb1.getY()):
-        print("FAILED TEST CASE 3.8 ATTEMPT A NON VALID CASTLE A ENEMY PIECE CAN MOVE THERE!")
-    b = [[kb0, " ", " ", qw0, " ", " ", " ", " "],
-         [pb0, " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", rw1, " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [pw0, pw1, pw2, pw3, pw4, pw5, pw6, pw7],
-         [rw0, knw0, bw0, " ", kw0, bw1, knw1, " "]]
-    setPositions(b)
-    incheckInfo = inCheck(b, "Black")
-    chkMate = checkMate(b, "Black", incheckInfo)
-
-    if (incheckInfo[0] == 1):
-        if not (chkMate):
-            print("FAILED test case 5.1, the black king is in checkmate! ")
-    # TO BE CONTINUED
-
-    # WILL THE GAME ALLOW A PLAYER TO MAKE A MOVE THAT WILL AUTOMATICALLY PUT THEM IN CHECK/CHECKMATE?
-    b = [[kb0, rb1, " ", " ", " ", " ", " ", qw0],
-         [pb0, " ", pb1, qb0, knb0, bb0, " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", rw1, " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [pw0, pw1, pw2, pw3, pw4, pw5, pw6, pw7],
-         [rw0, knw0, bw0, " ", kw0, bw1, knw1, " "]]
-    setPositions(b)
-    if (rb1.move(b, rb1.getX(), rb1.getY() + 1)):
-        print("FAILED test case 6.1, player cannot put self in check/checkmate! ")
-    b = [[kb0, " ", pb1, " ", " ", " ", " ", qw0],
-         [pb0, rb1, " ", qb0, knb0, bb0, " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", rw1, " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [pw0, pw1, pw2, pw3, pw4, pw5, pw6, pw7],
-         [rw0, knw0, bw0, " ", kw0, bw1, knw1, " "]]
-    setPositions(b)
-    if (pb1.move(b, pb1.getX(), pb1.getY() + 1)):
-        print("FAILED test case 6.2, player cannot put self in check/checkmate! ")
-    b = [[kb0, " ", " ", qb0, " ", " ", " ", qw0],
-         [pb0, rb1, " ", " ", knb0, bb0, " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", rw1, " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [pw0, pw1, pw2, pw3, pw4, pw5, pw6, pw7],
-         [rw0, knw0, bw0, " ", kw0, bw1, knw1, " "]]
-    setPositions(b)
-    if (qb0.move(b, qb0.getX(), qb0.getY() + 1)):
-        print("FAILED test case 6.3, player cannot put self in check/checkmate! ")
-    b = [[kb0, " ", " ", " ", knb0, " ", " ", qw0],
-         [pb0, rb1, " ", " ", " ", bb0, " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", rw1, " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [pw0, pw1, pw2, pw3, pw4, pw5, pw6, pw7],
-         [rw0, knw0, bw0, " ", kw0, bw1, knw1, " "]]
-    setPositions(b)
-    if (kb0.move(b, kb0.getX() - 1, kb0.getY() + 2)):
-        print("FAILED test case 6.4, player cannot put self in check/checkmate! ")
-    b = [[kb0, " ", " ", " ", " ", bb0, " ", qw0],
-         [pb0, rb1, " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", rw1, " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [" ", " ", " ", " ", " ", " ", " ", " "],
-         [pw0, pw1, pw2, pw3, pw4, pw5, pw6, pw7],
-         [rw0, knw0, bw0, " ", kw0, bw1, knw1, " "]]
-    setPositions(b)
-    if (bb0.move(b, bb0.getX() - 1, bb0.getY() + 1)):
-        print("FAILED test case 6.5, player cannot put self in check/checkmate! ")
-
-
+#checks if the pawn can make a legal en passant move
 def enPassant(board, xPos, yPos, moveX, moveY):
     if (board[yPos][xPos].getType() != "p"):
         return False
@@ -1841,6 +1444,7 @@ def enPassant(board, xPos, yPos, moveX, moveY):
                     return True
 
 
+#function for enPassant move
 def makeEnPassant(board, xPos, yPos, moveX, moveY):
     if (board[yPos][xPos].getPlayer() == "Black"):
         if (moveY == 5 and abs(moveY - board[yPos][xPos].getY() < 2)):
@@ -1864,6 +1468,7 @@ def makeEnPassant(board, xPos, yPos, moveX, moveY):
                     return board
 
 
+#function for castle move
 def castleMove(board, xPos, yPos, moveX, moveY):
     if (moveX > xPos):
         # move the rook first
@@ -1900,6 +1505,7 @@ def castleMove(board, xPos, yPos, moveX, moveY):
         return board
 
 
+#function for pawn promotion
 def pawnPromotion(board, xPos, yPos):
     p = ""
 
@@ -1953,11 +1559,10 @@ def pawnPromotion(board, xPos, yPos):
 
 
 def makeMove(board, xPos, yPos, moveX, moveY):
+    castling = False
     if (board[yPos][xPos].getType() == "p"):
         if (enPassant(board, xPos, yPos, moveX, moveY)):
             return makeEnPassant(board, xPos, yPos, moveX, moveY)
-
-    castling = False
 
     if (board[moveY][moveX] != " "):
         if (board[yPos][xPos].getType() == "K"
@@ -1969,7 +1574,6 @@ def makeMove(board, xPos, yPos, moveX, moveY):
     try:
         if (castling):
             return castleMove(board, xPos, yPos, moveX, moveY)
-            # check if the move is legal
         else:
             board[moveY][moveX] = board[yPos][xPos]
             board[moveY][moveX].moveCounter()
@@ -1996,6 +1600,7 @@ def makeMove(board, xPos, yPos, moveX, moveY):
         return board
 
 
+#returns a list with both king coords
 def findKingPos(board):
     coordinates = [0, 0, 0, 0]
     for i in range(8):
@@ -2010,7 +1615,7 @@ def findKingPos(board):
     return coordinates
 
 
-# test if @param player is in check
+# test if @param player is in check, returns the x,y coordinates of the attacking piece
 def inCheck(board, player):
     coordinates = findKingPos(board)
     bKingY = coordinates[0]
@@ -2025,22 +1630,20 @@ def inCheck(board, player):
     kingY = 0
 
     temp = copy.deepcopy(board)
+    #get the king coordinates
     if (player == "White"):
         temp[wkingY][wkingX] = pb1
         kingX = wkingX
         kingY = wkingY
     elif (player == "Black"):
-        # print("We are seeing if black is in CHECK---------------------------------------------------------------------------------------------")
         temp[bKingY][bKingX] = pb0
         kingX = bKingX
         kingY = bKingY
-    # print("TEMP")
-    # printBoard(temp)
+
     for i in range(8):
         for j in range(8):
             if (temp[i][j] != " "):
                 if (temp[i][j].getType() != "K"):
-
                     if temp[i][j].getPlayer() != player and temp[i][j].move(temp, kingX, kingY):
                         r = [1, i, j]
                         return r
@@ -2109,8 +1712,6 @@ def checkMate(board, player, coordinates):
     # print("checkmate")
     return True
 
-    # find if there is a move availble to take the king out of check
-
 
 # converts a user entered string to board indices
 def convertInput(xInput, yInput):
@@ -2125,13 +1726,11 @@ def convertInput(xInput, yInput):
 
 # helper function for InCheckMate and king.move() functions
 def canEnemyMove(board, player, x, y):
-    # temp = copy.deepcopy(board)
     for i in range(8):
         for j in range(8):
             if (board[i][j] != " "):
                 if (board[i][j].getPlayer() != player):
                     if (board[i][j].type != "K"):
-                        # print("here")
                         if (board[i][j].move(board, x,
                                              y)):  # and board[i][j].move(board, x, y) and board[i][j].getType()!="K":
                             print(board[i][j].toStr())
@@ -2183,12 +1782,6 @@ class moveInfo():
         while (self.prev != None):
             self = self.prev
         return self
-
-
-# gets available moves and selects a random move
-def randomAImove(board, player):
-    list = getAvailableMoves(board, player)
-    return random.choice(list)
 
 
 # convert figuirine algebraic to board indices.
@@ -2329,70 +1922,6 @@ def getEvaluation(board, player, moveCount):
         summation *= 1000
 
     return (summation)
-
-
-# standard chess game between two human opponents
-def twoPlayerGame():
-    inCheckMate = False
-    whiteTurn = True
-
-    while (not inCheckMate):
-        try:
-            if (whiteTurn):
-                print("White Player Select a Piece")
-            else:
-                print("Black Player Select a Piece ")
-            p = input()
-            yVal = p[1]
-            yVal = int(yVal)
-            SelPce = convertInput(p[0].upper(), yVal)
-            if (whiteTurn and board[SelPce[0]][SelPce[1]].getPlayer() == "White"):
-
-                printBoardWithAvailMoves(board, SelPce[0], SelPce[1], showAvailMoves)
-                print("Select a move spot")
-                p = input()
-                yVal = p[1]
-                yVal = int(yVal)
-                move = convertInput(p[0].upper(), yVal)
-                yVal = int(yVal)
-                board = makeMove(board, SelPce[0], SelPce[1], move[0], move[1])
-                whiteTurn = not whiteTurn
-            elif not whiteTurn and board[SelPce[0]][SelPce[1]].getPlayer() == "Black":
-                printBoardWithAvailMoves(board, SelPce[0], SelPce[1], showAvailMoves)
-                print("Select a move spot")
-                p = input()
-                yVal = p[1]
-                yVal = int(yVal)
-                move = convertInput(p[0].upper(), yVal)
-                yVal = int(yVal)
-                board = makeMove(board, SelPce[0], SelPce[1], move[0], move[1])
-            else:
-                print("you need to select your own piece")
-
-        except(ValueError, NameError, AttributeError, IndexError):
-            print("Use correct input")
-    inCheckInfo = inCheck(board, "White")
-    if (inCheckInfo[0] == 1):
-        if (checkMate(board, "White", inCheckInfo)):
-            print("White is in Checkmate!")
-            inCheckMate = True
-        else:
-            print("White is in Check")
-    inCheckInfo = inCheck(board, "Black")
-    if (inCheckInfo[0] == 1):
-        if (checkMate(board, "Black", inCheckInfo)):
-            print("Black is in Checkmate!")
-            inCheckMate = True
-        else:
-            print("Black is in Check")
-
-    printBoard(board)
-    whiteTurn = not whiteTurn
-
-
-def Train_AI():
-    convertData()
-    return True
 
 
 # two AI game for training and observation
@@ -2795,58 +2324,17 @@ def writeDataToExcel(moveList, moveCount, winner, blackInCheck, whiteInCheck, bl
     csvFile.close()
 
 
-class driver():
-    l = [0, 0, 0]
-    # ensure that the test cases pass
-    # testCases()
-    print()
-    print()
-    # initilize 2d board with pieces
-    board = newGame()
-
-    coordinates = findKingPos(board)
-
-    print("Is this game an AI game for data collection or training? ")
-    print("y for yes, t for train or any other key for no.")
-
-    ai = input()
-    test = False
-    if (ai == "y"):
-        # realPlayer = False
-        train = False
-        AIPlayer = False
-    if (ai == "t"):
-        AIPlayer = True
-        train = True
-    if (ai == "test"):
-        test = True
-
-    showAvailMoves = True
-
-    # print out the board with pieces and color
-    printBoard(board)
+def two_player_game():
     whiteTurn = True
     inChk = False
     inCheckMate = False
-    if (test):
-        print("here")
-        inCheckMate = tester()
-    if (AIPlayer and train):
-        inCheckMate = twoAIGame()
-    if (AIPlayer):
-        inCheckMate = twoAIGame()
-
+    l = [0, 0, 0]
+    board=newGame()
+    coordinates = findKingPos(board)
+    showAvailMoves = True
+    # initilize 2d board with pieces
+    board = newGame()
     while (not inCheckMate):
-
-        # inCheckMate = twoPlayerGame()
-
-        if (AIPlayer and numAI == 2):
-            mi = randomAImove(board, "White")
-            board = makeMove(board, mi[0], mi[1], mi[2], mi[3])
-            printBoard(board)
-            mi = randomAImove(board, "Black")
-            board = makeMove(board, mi[0], mi[1], mi[2], mi[3])
-            printBoard(board)
         # inCheckInfo is a list containing whether or not the player is in check
         # and holds the coordinates of the attacking piece
         inCheckInfo = inCheck(board, "White")
@@ -2860,16 +2348,11 @@ class driver():
         if (inCheckInfo[0] == 1):
             if (checkMate(board, "Black", inCheckInfo)):
                 print("Black is in Checkmate!")
-
                 inCheckMate = True
             else:
                 print("Black is in Check")
-
         try:
             print("Select a Piece")
-            # p =
-            # if (AIPlayer):
-
             p = input()
             yVal = p[1]
             yVal = int(yVal)
@@ -2886,5 +2369,33 @@ class driver():
             print("Use correct input")
         printBoard(board)
         whiteTurn = not whiteTurn
-
     print("GAME OVER")
+
+
+class driver():
+    whiteTurn = True
+    inChk = False
+    inCheckMate = False
+    l = [0, 0, 0]
+    # initilize 2d board with pieces
+    board = newGame()
+    #get the coordinates for king positions
+    coordinates = findKingPos(board)
+    showAvailMoves = True
+    print("Is this game an AI game for data collection or training? ")
+    print("y for yes, t for train or any other key for no.")
+
+    ai = input()
+    test = False
+    if (ai == "y"):
+        # realPlayer = False
+        train = False
+        AIPlayer = False
+    if (ai == "t"):
+        inCheckMate = twoAIGame()
+    if (ai == "test"):
+        inCheckMate = tester()
+
+    # print out the board with pieces and color
+    printBoard(board)
+    two_player_game()
