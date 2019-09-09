@@ -10,13 +10,15 @@ from keras.layers import Dense, Dropout, LSTM, \
     CuDNNLSTM  # used to stop data from being diluted over time, typical of RNN's
 from keras.models import load_model
 import keras
+import csv
 #sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
 from colorama import Fore, Back, Style
 import copy
 
 realPlayer = False
 onlyLegalMoves = True
-
+minimax_tree_depth=3
+minimax_tree_subnodes=2
 #adjusting the board colors https://pypi.org/project/colorama/
 board_color1=Back.LIGHTCYAN_EX
 board_color2=Back.LIGHTRED_EX
@@ -89,8 +91,6 @@ class DNNPlayer(object):
         y_train = np.resize(y_train, (x_train.shape[0], 16))  # reshape into arrays of 16
         y_test = np.resize(y_test, (x_test.shape[0], 16))  # reshape into arrays of 16
 
-        # y_train=np.reshape(y_train(1,4,4))
-        # y_test = np.reshape(y_test(1, 4, 4))
 
         print("Shape of data:")
         print(x_train.shape)
@@ -98,7 +98,7 @@ class DNNPlayer(object):
         print(x_test.shape)
         print(y_test.shape)
 
-        print("Compiling model...")
+        print("Building model...")
         model = Sequential()
         input_shape = x_train[0].shape
         model.add(LSTM(256, input_shape=(input_shape), activation='relu', return_sequences=True))
@@ -119,11 +119,8 @@ class DNNPlayer(object):
 
         # reshape the y_train (1,4,4) input into Dense 16 input array
         y_train = np.reshape(y_train, (-1, 16))  # reshape into arrays of 16
-        # y_test=y_train
-        # x_test=x_train
+
         y_test = np.reshape(y_test, (-1, 16))  # reshape into arrays of 16
-        # print(y_train.shape)
-        # print(y_test.shape)
         # fit the data and train the model
         model.fit(x_train, y_train, epochs=200, validation_data=(x_test, y_test))
         # self.model=model.save_weights()
@@ -135,9 +132,10 @@ class DNNPlayer(object):
         else:
             self.model.save('Black_AI_Model.h5', True)
 
-    # if epsilon val < rand make random move.
+
     # if Neural Network has a legal prediction, make that move.
-    # If NN move is not legal, make minimax move.
+    # if epsilon val < rand make random move.
+    # If NN move is not legal,  or if epsilon val > rand make make minimax move .
     def AImove(self, boardState):
         # give opportunity for random move first
         print("------MAKING A PREDICTION FOR " + self.player + " +-------")
@@ -146,17 +144,17 @@ class DNNPlayer(object):
         temp2 = np.resize(temp2, (1, 4, 64))
         temp2 = np.array(temp2)
 
+        #prediction is a 2d array where prediction[][i] = the suggested move
         prediction = (self.model.predict(temp2))
         prediction = prediction.tolist()
 
         intStr = ""
-        # round the decimal numbers to binary
+        # convert the NN output to a usable output
         for i in range(16):
             if ((prediction[0][i]) >= 0.01):
                 prediction[0][i] = 1
             else:
                 prediction[0][i] = 0
-        # print(prediction)
 
         # convert the binary vector to a move list
         move = []
@@ -167,43 +165,49 @@ class DNNPlayer(object):
                 s += (str(prediction[0][j]))
             if (j % 4 == 0 and j != 0 or j == 15):
                 move.append(int(s, 2))
-                # print(move)
                 s = ""
         try:
-            # print(move)
+            #try the NN move
             if (boardState[move[1]][move[0]].move(boardState, move[2], move[3])):
                 print("Neural Network says:" + encoder(boardState, move))
                 return move
             # If NN move is not legal, make minimax move.
             else:
                 self.error_count += 1
-                root: tree_node = tree_node(boardState, None, 0, self.player)
-                mini: minimaxTree = minimaxTree(root, boardState, self.player, 2)
-                mini.construct_tree(root, boardState, self.player, 3)
-                miniMaxMove = mini.getMove()
+                if(random.random()<self.epsilon or self.moveCount<=3):
+                    list_of_moves = getAvailableMoves(boardState, self.player)
+                    move=random.choice(list_of_moves)
+                    print("Random move:" + encoder(boardState, move))
+                    return move
+
+                mini: minimaxTree = minimaxTree(boardState, self.player, minimax_tree_depth, minimax_tree_subnodes)
+                miniMaxMove = mini.get_best_move()
                 move = miniMaxMove
                 print("MiniMax says:" + encoder(boardState, move))
                 return move
 
         except(AttributeError):
             self.error_count += 1
-            try:
-                root: tree_node = tree_node(boardState, None, 0, self.player)
-                mini: minimaxTree = minimaxTree(root, boardState, self.player, 2)
-                mini.construct_tree(root, boardState, self.player, 3)
-                miniMaxMove = mini.getMove()
-                move = miniMaxMove
-                return move
-            except:
-                return randomAImove(boardState, self.player)
 
+            mini: minimaxTree = minimaxTree(boardState, self.player, minimax_tree_depth, minimax_tree_subnodes)
+            miniMaxMove = mini.get_best_move()
+            move = miniMaxMove
+            print("MiniMax says:" + encoder(boardState, move))
+            return move
+
+           # move = random.choice(getAvailableMoves(boardState, self.player))
+            #print("Everything else failed..returning rand move:" + encoder(boardState, move))
+            #return move
+
+#append winning game info to train with later
     def remember(self, state, action, next_state, reward, gameComplete, winningPlayer):
         from keras.models import load_model
 
         action = convert_to_binary_matrix(action, False)
         state = convert_to_binary_matrix(state, True)
-        self.memory.append((state, action))
+
         if (gameComplete and winningPlayer == self.player):
+            self.memory.append((state, action))
             print("put game info into memory")
 
         # get the list of moves
@@ -216,23 +220,24 @@ class tree_node(object):
         self.move = move
         self.state = state
         self.player = player
-        self.parent = None
-        self.left_child = None
-        self.right_child = None
+        self.children=[]
 
 
 class minimaxTree(object):
 
-    def __init__(self, node, state, player, depth):
-        self.root = node
+    def __init__(self,  state, player, depth, num_subtrees):
         self.state = state
         self.player = player
         self.depth = depth
-        self.tree = None
-
+        self.tree = []
+        self.num_subtrees=num_subtrees
+        self.construct_tree(self.state, self.player)
+    #finds the best move in ML
     def getEval(self, board, player, ML):  # heuristic
-        stack = []
-        temp = []
+        move_info=[]
+        best_move = []
+        best_move_val = -99999
+        current_move_val = 0
         if (player == "White"):
             enemyPlayer = "Black"
         else:
@@ -240,82 +245,101 @@ class minimaxTree(object):
         best = -9999999
         numStackItems = 0
         stack = []
-
+        #while there are legal moves available
         while (ML):
             pSum = 0
             eSum = 0
-            moveVal = 0
             move = ML.pop()
-
+            #simple heuristic to add up the piece values
             for i in range(8):
                 for j in range(8):
                     if board[i][j] != " ":
                         if board[i][j].player == player:
                             pSum += board[i][j].value
+                        # the spot in the board contains an enemy piece
                         else:
                             eSum -= board[i][j].value
-            moveVal = pSum + eSum
-
-
-            if (moveVal >= best or numStackItems <= 2):
-                numStackItems += 1
-                temp = copy.deepcopy(board)
-
-                temp = makeMove(temp, move[0], move[1], move[2], move[3])
-
-                moveInfo = [temp, move, best]
-                best = moveVal
-                stack.append(moveInfo)
-
-        return stack
-
-
-    def construct_tree(self, node, state, player, depth):
-        if depth <= 0:
-            return
+            current_move_val=pSum+eSum
+            if(current_move_val >= best_move_val):
+                move_info.clear()
+                best_move=move
+                best_move_val=current_move_val
+                current_move_val=0
+                move_info.append(best_move)
+                move_info.append(best_move_val)
+        return move_info
+    #make the minimax tree based on the depth and number of subtrees
+    def construct_tree(self,  state, player):
+        root =state
+        self.tree.append(tree_node( state, None, 0, player))
+        iterator=1
+        if self.depth <= 1:
+            print("You must make a larger tree")
+            return False
         list_of_moves = []
-        list_of_moves = getAvailableMoves(state, player)
-        MS = self.getEval(state, player, list_of_moves)
-
-        info = MS.pop()
-        left: tree_node = tree_node(info[0], info[1], info[2], player)
-        info = MS.pop()
-        right: tree_node = tree_node(info[0], info[1], info[2], player)
-        MS.clear()
-        # when available moves is <2
-        # return node
-
-        node.left_child = left
-        node.right_child = right
-
-        # return
-
-        # switch the evaluating player
-        if (player == "Black"):
-            player == "White"
-        else:
-            player == "Black"
-
-        self.construct_tree(node.left_child, node.left_child.state, player, depth - 1)
-        self.construct_tree(node.right_child, node.right_child.state, player, depth - 1)
+        move=[]
+        move_val=0
 
 
-    def traverse_tree(self, node, sum, player):
-        flag = False
-        if (node.right_child == None or node.left_child == None):
-            return
-        if (node.player != player):
-            flag = True
-        if (not flag):
-            sum += node.left_child.node_value
-            sum += node.right_child.node_value
-        if (flag):
-            sum -= node.left_child.node_value
-            sum -= node.right_child.node_value
-        self.traverse_tree(node.left_child, sum, player)
-        self.traverse_tree(node.right_child, sum, player)
+        for level in range (1, self.depth+1):
+            list_of_moves = getAvailableMoves(state, player)
+            #the height of any tree is = (num_subtrees^h)+1
+            for each_node in range (1, (self.num_subtrees**level)+1):
+                #get the best move and value associated with it from the move list
+                move_info = self.getEval(state, player, copy.deepcopy(list_of_moves))
+                try:
+                    move = move_info[0]
+                    move_val = move_info[1]
+                    if (len(list_of_moves) > 1):
+                        list_of_moves.remove(move)
+                except: IndexError
+                #remove the best move
 
+                move_val=move_info[1]
+                temp_state=makeMove(copy.deepcopy(state),move[0], move[1], move[2], move[3])
+                #store the info into a tree node
+                self.tree.append(tree_node(temp_state, move, move_val, player))
+                self.tree[iterator-1].children.append(self.tree[-1])
+                # switch the evaluating player
+                if(each_node%self.num_subtrees==0):
+                    state = self.tree[iterator].state
+                    iterator += 1
+
+            if (self.tree[iterator].player == "Black"):
+                player = "White"
+            elif (self.tree[iterator].player == "White"):
+                player = "Black"
+
+
+        return True
+    #traverse the tree...find the best move by applying a summation to each initial subtree
+    def bfs(self,sub_node):
+        height=0
+        sum=0
+        while(height<self.depth-1):
+            for subtrees in range (0, (self.num_subtrees)):
+                a=sub_node.children[subtrees]
+                sum+=a.node_value
+            sub_node=sub_node.children[height]
+            height += 1
         return sum
+    def get_best_move(self):
+        best_val=-9999
+        temp_val=0
+        index=0
+        for subtrees in range (1, (self.num_subtrees+1)):
+            subtree_node=self.tree[subtrees]
+            temp=self.bfs(subtree_node)
+            if(temp>best_val):
+                best_val=temp
+                index=subtrees
+                temp=0
+            return self.tree[index].move
+
+
+
+        return
+
 
 
     def getMove(self):
@@ -417,22 +441,6 @@ class piece(object):
 
     def setGameDate(self, data):
         self.data = data
-
-
-def moveIsValid(self, moveVector, board, moveX, moveY):
-    checkSpot = board[moveY][moveX]
-    if (checkSpot != " "):
-        boardSpotIsEmpty = False
-    else:
-        boardSpotIsEmpty = True
-    if (not (boardSpotIsEmpty)):
-        if (checkSpot.getPlayer() == self.getPlayer()) or (checkSpot.getType == "K"):
-            return False
-    if (boardSpotIsEmpty and self.getType() == "p"
-            and self.moveCount > 0 and abs(moveVector.getY()) != 1):
-        return False;
-    else:
-        return True
 
 
 # used as a helper function to ensure player is not putting their own king in check
@@ -831,9 +839,6 @@ class knight(piece):
         if (
                 horizontal == 2 and vertical == 1
                 or vertical == 2 and horizontal == 1
-                # and not putOwnKingInCheck(board, self.getX(), self.getY(), moveX, moveY)
-
-                # and attackingFriendlyPiece
         ):
             return not putOwnKingInCheck(board, self.getX(), self.getY(), moveX, moveY)
             # return True
@@ -1560,11 +1565,12 @@ def pawnPromotion(board, xPos, yPos):
 
 def makeMove(board, xPos, yPos, moveX, moveY):
     castling = False
-    if (board[yPos][xPos].getType() == "p"):
-        if (enPassant(board, xPos, yPos, moveX, moveY)):
-            return makeEnPassant(board, xPos, yPos, moveX, moveY)
+    if (board[yPos][xPos] != " "):
+        if (board[yPos][xPos].type== "p"):
+            if (enPassant(board, xPos, yPos, moveX, moveY)):
+                return makeEnPassant(board, xPos, yPos, moveX, moveY)
 
-    if (board[moveY][moveX] != " "):
+    if (board[moveY][moveX] != " ") and board[yPos][xPos] != " ":
         if (board[yPos][xPos].getType() == "K"
                 and board[moveY][moveX].getType() == "r"
                 and board[moveY][moveX].getPlayer() == board[yPos][xPos].getPlayer()
@@ -1936,8 +1942,6 @@ def twoAIGame():
     wp: DNNPlayer = DNNPlayer(50000, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, "White")
     bp: DNNPlayer = DNNPlayer(50000, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, "Black")
 
-    # wp.buildModel()
-    # bp.buildModel()
     max_num_moves = 45
     numGames = 0
     whiteWins = 0
@@ -1955,12 +1959,11 @@ def twoAIGame():
     bp.model = load_model('Black_AI_Model.h5')
     while (numGames < 10000):
 
-        wp.epsilonDecay -= 0.001
-        bp.epsilonDecay -= 0.001
-        wp.epsilon *= epsilonDecay
-        bp.epsilon *= epsilonDecay
+
 
         board = newGame()
+
+
         numGames += 1
         winner = ""
         # clear the moveList
@@ -1986,10 +1989,16 @@ def twoAIGame():
             print(bp.error_count)
             print("White moveError count: ")
             print(wp.error_count)
-            # build the models
+
+
             if (max_num_moves > 25):
                 max_num_moves -= 1
 
+            #decrease the exploration rate
+            wp.epsilonDecay -= 0.001
+            bp.epsilonDecay -= 0.001
+            wp.epsilon *= epsilonDecay
+            bp.epsilon *= epsilonDecay
             # build and update the models
             wp.buildModel()
             bp.buildModel()
@@ -2015,31 +2024,23 @@ def twoAIGame():
 
             while (not inCheckMate):
 
-                # root: tree_node=tree_node(board,None,  0, "White")
-                # mini: minimaxTree = minimaxTree(root, board, "White", 2)
-                # mini.construct_tree(root, board, "White", 3)
-                # m=mini.getMove()
-
-                # print("Minimax says:" + encoder(board, m))
-
                 # train on a 50 move limit draw
                 if (counter > max_num_moves):
                     counter = 0
                     draw += 1
                     winner = "Draw"
-                    # wp.buildModel()
                     print(winner + " number of moves")
                     print(max_num_moves)
 
                     print("clearing memory that resulted in a draw")
 
-                    for i in range(int(wp.moveCount)):  #
+                    for i in range(int( len(wp.memory)-1)):  #
                         wp.memory.popleft()
-                    for j in range(bp.moveCount):
+                    for i in range(int( len(bp.memory)-1)):
                         bp.memory.popleft()
-                    # if the number of moves made is odd, wp has made 1 more move than black
 
-                    break  # go to the outer loop
+                    # go to the outer loop
+                    break
                     # reset the epsilon value to avoid learning plateau
                     # wp.epsilon = epsilon
                     # bp.epsilon = epsilon
@@ -2060,30 +2061,26 @@ def twoAIGame():
                 # store the previous state, move, current state, reward, and if white is in checkmate
                 wp.remember(board, mi, board2, 0, inCheckMate, "")
 
-                board = copy.deepcopy(board2)  # update the board
+                # update the board
+                board = copy.deepcopy(board2)
                 try:
                     inCheckInfo = inCheck(board, "Black")
                 except(RecursionError):
                     break
+
                 # see if black is in checkmate
                 if (inCheckInfo[0] == 1):
-                    # wp.buildModel()
-                    # bp.buildModel()
                     if (checkMate(board, "Black", inCheckInfo)):
                         print("Black is in Checkmate!")
-                        wp.buildModel()
-                        wp.model = load_model('White_AI_Model.h5')
                         whiteWins += 1
                         winner = "White"
                         inCheckMate = True
-
                         printBoard(board)
                         break
                     else:
                         print("Black is in check!")
                         printBoard(board)
                         whiteInCheck += 1
-
                 temp = copy.deepcopy(board)
                 try:
                     # try to return a move based on model, if move is not legal, return a random move
@@ -2099,7 +2096,6 @@ def twoAIGame():
                 bp.remember(board, mi, board2, 0, inCheckMate, "")
 
                 board = copy.deepcopy(board2)
-                # printBoard(board)
                 # store the movelist for adding to csv file
                 recordMoves.extend(mi)
                 # see if white is in check
@@ -2109,17 +2105,12 @@ def twoAIGame():
                     break
                 # see if white is in checkMate
                 if (inCheckInfo[0] == 1):
-                    # wp.buildModel()
-
+                    #see if white is in checkmate
                     if (checkMate(board, "White", inCheckInfo)):
                         print("White is in Checkmate!")
-
-                        bp.buildModel()
-                        bp.model = load_model('Black_AI_Model.h5')
                         blackWins += 1
                         winner = "Black"
                         inCheckMate = True
-
                         printBoard(board)
                         break
                     else:
@@ -2136,10 +2127,10 @@ def twoAIGame():
                 wp.learningRate += 0.01
                 bp.learningRate += 0.01
                 if (winner == "Black"):
-                    bp.remember(board, mi, board2, reward, inCheckMate, "Black")
+                    bp.remember(board, mi, board, reward, inCheckMate, "Black")
                 # bp.buildModel()
                 elif (winner == "White"):
-                    wp.remember(board, mi, board2, reward, inCheckMate, "White")
+                    wp.remember(board, mi, board, reward, inCheckMate, "White")
                     # wp.buildModel()
 
 
@@ -2162,6 +2153,7 @@ def twoAIGame():
     print(whiteInCheck)
     print("Black put into check: ")
     print(blackInCheck)
+    #save the model information and rebuild the model
     wp.buildModel()
     bp.buildModel()
     return True
@@ -2173,12 +2165,6 @@ def tester():
     # wp=
     wp.buildModel()
     wp.model = load_model("AI_Chess_Model(1).h5")
-    # json_file = open('AI_Training_Data.json', 'r')
-    # loaded_model_json = json_file.read()
-    # json_file.close()
-    # wp = model_from_json(loaded_model_json)
-    # load weights into new model
-    # wp=load_model("AI_Chess_Model(2).h5")
     print("Loaded model from disk")
 
     # evaluate loaded model on test data
@@ -2267,7 +2253,7 @@ def tester():
                         whiteInCheck += 1
                     # printBoard(board)
                 # return a random legal move
-                mi = randomAImove(board, "Black")
+                mi = random.choice(getAvailableMoves(board, "Black"))
                 # make the move
                 board2 = makeMove(board, mi[0], mi[1], mi[2], mi[3])
                 # reward = getEvaluation(board, bp.player, counter)
@@ -2379,6 +2365,8 @@ class driver():
     l = [0, 0, 0]
     # initilize 2d board with pieces
     board = newGame()
+
+
     #get the coordinates for king positions
     coordinates = findKingPos(board)
     showAvailMoves = True
