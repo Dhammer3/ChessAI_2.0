@@ -260,7 +260,7 @@ class minimaxTree(object):
                         else:
                             eSum -= board[i][j].value
             current_move_val=pSum+eSum
-            if(current_move_val >= best_move_val):
+            if(current_move_val >= best_move_val or len(move_info)==0):
                 move_info.clear()
                 best_move=move
                 best_move_val=current_move_val
