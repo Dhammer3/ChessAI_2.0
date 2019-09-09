@@ -293,6 +293,7 @@ class minimaxTree(object):
                     if (len(list_of_moves) > 1):
                         list_of_moves.remove(move)
                 except: IndexError
+                break
                 #remove the best move
 
                 move_val=move_info[1]
