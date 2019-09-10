@@ -232,39 +232,34 @@ class minimaxTree(object):
         self.tree = []
         self.num_subtrees=num_subtrees
         self.construct_tree(self.state, self.player)
+    #heuristic to evaluate a move
+    def eval_move(self, board, move, player):
+        board=makeMove(board,move[0], move[1], move[2], move[3])
+        pSum = 0 #sum of @param player pieces
+        eSum = 0 #sum of enemy player pieces
+        for i in range(8):
+            for j in range(8):
+                if board[i][j] != " ":
+                    if board[i][j].player == player:
+                        pSum += board[i][j].value
+                    else:
+                        eSum -= board[i][j].value
+        current_move_val = pSum + eSum
+        return current_move_val
     #finds the best move in ML
-    def getEval(self, board, player, ML):  # heuristic
+    def find_best_move(self, board, player, ML):  # heuristic
         move_info=[]
         best_move = []
         best_move_val = -99999
         current_move_val = 0
-        if (player == "White"):
-            enemyPlayer = "Black"
-        else:
-            enemyPlayer = "White"
-        best = -9999999
-        numStackItems = 0
-        stack = []
         #while there are legal moves available
-        while (ML):
-            pSum = 0
-            eSum = 0
-            move = ML.pop()
+        for move in ML:
             #simple heuristic to add up the piece values
-            for i in range(8):
-                for j in range(8):
-                    if board[i][j] != " ":
-                        if board[i][j].player == player:
-                            pSum += board[i][j].value
-                        # the spot in the board contains an enemy piece
-                        else:
-                            eSum -= board[i][j].value
-            current_move_val=pSum+eSum
+            current_move_val=self.eval_move(copy.deepcopy(board), move, player)
             if(current_move_val >= best_move_val or len(move_info)==0):
                 move_info.clear()
                 best_move=move
                 best_move_val=current_move_val
-                current_move_val=0
                 move_info.append(best_move)
                 move_info.append(best_move_val)
         return move_info
@@ -279,21 +274,18 @@ class minimaxTree(object):
         list_of_moves = []
         move=[]
         move_val=0
-
-
         for level in range (1, self.depth+1):
             list_of_moves = getAvailableMoves(state, player)
             #the height of any tree is = (num_subtrees^h)+1
             for each_node in range (1, (self.num_subtrees**level)+1):
                 #get the best move and value associated with it from the move list
-                move_info = self.getEval(state, player, copy.deepcopy(list_of_moves))
+                move_info = self.find_best_move(state, player, copy.deepcopy(list_of_moves))
                 try:
                     move = move_info[0]
                     move_val = move_info[1]
                     if (len(list_of_moves) > 1):
                         list_of_moves.remove(move)
                 except: IndexError
-                break
                 #remove the best move
 
                 move_val=move_info[1]
@@ -301,17 +293,14 @@ class minimaxTree(object):
                 #store the info into a tree node
                 self.tree.append(tree_node(temp_state, move, move_val, player))
                 self.tree[iterator-1].children.append(self.tree[-1])
-                # switch the evaluating player
+                #need to switch the board to a different subtree board
                 if(each_node%self.num_subtrees==0):
                     state = self.tree[iterator].state
                     iterator += 1
-
             if (self.tree[iterator].player == "Black"):
                 player = "White"
             elif (self.tree[iterator].player == "White"):
                 player = "Black"
-
-
         return True
     #traverse the tree...find the best move by applying a summation to each initial subtree
     def bfs(self,sub_node):
@@ -324,6 +313,7 @@ class minimaxTree(object):
             sub_node=sub_node.children[height]
             height += 1
         return sum
+    #traverse all children of each subtree, sum up all of the move values for each child, return the best move
     def get_best_move(self):
         best_val=-9999
         temp_val=0
@@ -336,21 +326,6 @@ class minimaxTree(object):
                 index=subtrees
                 temp=0
             return self.tree[index].move
-
-
-
-        return
-
-
-
-    def getMove(self):
-        left = self.traverse_tree(self.root.left_child, 0, self.player)
-        right = self.traverse_tree(self.root.right_child, 0, self.player)
-
-        if (left >= right):
-            return self.root.left_child.move
-        else:
-            return self.root.right_child.move
 
 
 def convert_to_binary_matrix(to_encode, is_game_board):
