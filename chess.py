@@ -26,6 +26,27 @@ move_color=Back.MAGENTA
 # note, see _encoders.py. a line of code was commented out to suppress warnings
 # https://keon.io/deep-q-learning/
 # https://www.youtube.com/watch?v=aCEvtRtNO-M
+def eval_move( board, move, player):
+    temp = makeMove(copy.deepcopy(board), move[0], move[1], move[2], move[3])
+    enemy_player = get_enemy_player(player)
+    current_move_val = 0
+    inCheckInfo = inCheck(copy.deepcopy(temp), enemy_player)
+    if (inCheckInfo[0] == 1):
+        if (checkMate(copy.deepcopy(temp), enemy_player, inCheckInfo)):
+            current_move_val += 10000
+        else:
+            current_move_val += 30
+    pSum = 0  # sum of @param player pieces
+    eSum = 0  # sum of enemy player pieces
+    for i in range(8):
+        for j in range(8):
+            if board[i][j] != " ":
+                if board[i][j].player == player:
+                    pSum += board[i][j].value
+                else:
+                    eSum -= board[i][j].value
+    current_move_val = pSum + eSum
+    return current_move_val
 class DNNPlayer(object):
     def __init__(self, memSize, gamma, epsilon, epsilonDecay, epsilonMin, learningRate, player):
         self.gamma = gamma  # decay or discount rate, to calculate the future discounted reward
@@ -212,7 +233,11 @@ class DNNPlayer(object):
 
         # get the list of moves
 
-
+def get_enemy_player(player):
+    if(player=="White"):
+        return "Black"
+    else:
+        return "White"
 # node is an object that holds the associated value a move in a minimax tree
 class tree_node(object):
     def __init__(self, state, move, value, player):
@@ -222,7 +247,7 @@ class tree_node(object):
         self.player = player
         self.children=[]
 
-
+# https://en.wikipedia.org/wiki/Minimax
 class minimaxTree(object):
 
     def __init__(self,  state, player, depth, num_subtrees):
@@ -234,7 +259,15 @@ class minimaxTree(object):
         self.construct_tree(self.state, self.player)
     #heuristic to evaluate a move
     def eval_move(self, board, move, player):
-        board=makeMove(board,move[0], move[1], move[2], move[3])
+        temp=makeMove(copy.deepcopy(board),move[0], move[1], move[2], move[3])
+        enemy_player=get_enemy_player(player)
+        current_move_val=0
+        inCheckInfo = inCheck(copy.deepcopy(temp), enemy_player)
+        if (inCheckInfo[0] == 1):
+            if (checkMate(copy.deepcopy(temp), enemy_player, inCheckInfo)):
+                current_move_val+=10000
+            else:
+                current_move_val+=30
         pSum = 0 #sum of @param player pieces
         eSum = 0 #sum of enemy player pieces
         for i in range(8):
@@ -285,10 +318,12 @@ class minimaxTree(object):
                     move_val = move_info[1]
                     if (len(list_of_moves) > 1):
                         list_of_moves.remove(move)
-                except: IndexError
-                #remove the best move
+                    move_val = move_info[1]
 
-                move_val=move_info[1]
+                except IndexError:#if no moves are available then the player is in checkmate
+                    return
+
+
                 temp_state=makeMove(copy.deepcopy(state),move[0], move[1], move[2], move[3])
                 #store the info into a tree node
                 self.tree.append(tree_node(temp_state, move, move_val, player))
@@ -308,8 +343,11 @@ class minimaxTree(object):
         sum=0
         while(height<self.depth-1):
             for subtrees in range (0, (self.num_subtrees)):
-                a=sub_node.children[subtrees]
-                sum+=a.node_value
+                try:
+                    a=sub_node.children[subtrees]
+                    sum+=a.node_value
+                except IndexError: #will randomly recieve index error if not enough moves available to fill the nodes in the tree
+                    break
             sub_node=sub_node.children[height]
             height += 1
         return sum
@@ -457,6 +495,10 @@ class pawn(piece):
             self.encodedVal = 2
 
     def move(self, board, moveX, moveY):
+        enemy_player=get_enemy_player(self.player)
+        if(board[moveY][moveX]!=' '):
+            if (board[moveY][moveX].type == "K"):
+                return False
         if (moveY == self.getY() and moveX == self.getX()):
             return False
         # setting up the booleans
@@ -671,6 +713,10 @@ class rook(piece):
             self.encodedVal = 4
 
     def move(self, board, moveX, moveY):
+        enemy_player = get_enemy_player(self.player)
+        if (board[moveY][moveX] != ' '):
+            if (board[moveY][moveX].type == "K"  and board[moveY][moveX].player==enemy_player):
+                return False
         if (moveY == self.getY() and moveX == self.getX()):
             return False
         horizontalMovement = False
@@ -796,6 +842,10 @@ class knight(piece):
             self.encodedVal = 6
 
     def move(self, board, moveX, moveY):
+        enemy_player = get_enemy_player(self.player)
+        if (board[moveY][moveX] != ' '):
+            if (board[moveY][moveX].type == "K"  and board[moveY][moveX].player==enemy_player):
+                return False
         if (moveY == self.getY() and moveX == self.getX()):
             return False
         vertical = abs(abs(moveY) - abs(self.getY()))
@@ -837,6 +887,10 @@ class bishop(piece):
             self.encodedVal = 8
 
     def move(self, board, moveX, moveY):
+        enemy_player = get_enemy_player(self.player)
+        if (board[moveY][moveX] != ' '):
+            if (board[moveY][moveX].type == "K" and board[moveY][moveX].player == enemy_player):
+                return False
         if (moveY == self.getY() and moveX == self.getX()):
             return False
         horizontalMovement = False
@@ -979,6 +1033,10 @@ class queen(piece):
             self.encodedVal = 10
 
     def move(self, board, moveX, moveY):
+        enemy_player = get_enemy_player(self.player)
+        if (board[moveY][moveX] != ' '):
+            if (board[moveY][moveX].type == "K"  and board[moveY][moveX].player==enemy_player):
+                return False
         if (moveY == self.getY() and moveX == self.getX()):
             return False
         if (moveY == self.getY() and moveX == self.getX()):
@@ -1170,6 +1228,7 @@ class king(piece):
             self.encodedVal = 12
 
     def move(self, board, moveX, moveY):
+
         if (moveY == self.getY() and moveX == self.getX()):
             return False
         castling = False
@@ -1508,7 +1567,7 @@ def pawnPromotion(board, xPos, yPos):
             q1: queen = queen(board[yPos][xPos].getPlayer())
             q1.setMoveCount(board[yPos][xPos].getMoveCount())
             # todo set game data
-            board[yPos][xPos] == " "
+            board[yPos][xPos] = " "
             board[yPos][xPos] = q1
             board[yPos][xPos].updatePos(xPos, yPos)
             return board
@@ -1516,7 +1575,7 @@ def pawnPromotion(board, xPos, yPos):
             r1: rook = rook(board[yPos][xPos].getPlayer())
             r1.setMoveCount(board[yPos][xPos].getMoveCount())
             # todo set game data
-            board[yPos][xPos] == " "
+            board[yPos][xPos] = " "
             board[yPos][xPos] = r1
             board[yPos][xPos].updatePos(xPos, yPos)
             return board
@@ -1524,7 +1583,7 @@ def pawnPromotion(board, xPos, yPos):
             b1: bishop = bishop(board[yPos][xPos].getPlayer())
             b1.setMoveCount(board[yPos][xPos].getMoveCount())
             # todo set game data
-            board[yPos][xPos] == " "
+            board[yPos][xPos] = " "
             board[yPos][xPos] = b1
             board[yPos][xPos].updatePos(xPos, yPos)
             return board
@@ -1532,7 +1591,7 @@ def pawnPromotion(board, xPos, yPos):
             k1: knight = knight(board[yPos][xPos].getPlayer())
             k1.setMoveCount(board[yPos][xPos].getMoveCount())
             # todo set game data
-            board[yPos][xPos] == " "
+            board[yPos][xPos] = " "
             board[yPos][xPos] = k1
             board[yPos][xPos].updatePos(xPos, yPos)
             return board
@@ -1628,6 +1687,7 @@ def inCheck(board, player):
                 if (temp[i][j].getType() != "K"):
                     if temp[i][j].getPlayer() != player and temp[i][j].move(temp, kingX, kingY):
                         r = [1, i, j]
+                        temp[kingX][kingY]=board[kingX][kingY]
                         return r
     return r
 
@@ -1646,8 +1706,8 @@ def checkMate(board, player, coordinates):
 
         kingY = kingCoords[0]
         kingX = kingCoords[1]
-        print(kingY)
-        print(kingX)
+        #print(kingY)
+        #print(kingX)
     else:
         kingY = kingCoords[2]
         kingX = kingCoords[3]
@@ -1657,10 +1717,12 @@ def checkMate(board, player, coordinates):
     for i in range(8):
         for j in range(8):
             # (1)
+            if(temp[kingY][kingX]==' '):
+                printBoard(temp)
             if (temp[kingY][kingX].move(temp, j, i)):
                 # print("Case 1")
-
                 return False
+
 
             if (temp[i][j] != " "):
                 # (2)
@@ -1715,8 +1777,8 @@ def canEnemyMove(board, player, x, y):
                     if (board[i][j].type != "K"):
                         if (board[i][j].move(board, x,
                                              y)):  # and board[i][j].move(board, x, y) and board[i][j].getType()!="K":
-                            print(board[i][j].toStr())
-                            print("can move there")
+                            #print(board[i][j].toStr())
+                            #print("can move there")
                             return False
 
     return False
@@ -1830,7 +1892,7 @@ def encoder(board, availableMove):
             encodedStr += "#"  # represents a checkmate
         else:
             encodedStr += "+"  # represents a check
-    return encodedStr
+    return encodedStr +" " + str(eval_move(board, availableMove, player))
 
 
 # return a vector of encoded available moves
